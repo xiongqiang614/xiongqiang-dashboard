@@ -1,0 +1,2919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>客服质检数据看板</title>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/datalabels.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;background:#f5f6fa;color:#2d3436;font-size:13px}
+.header{background:linear-gradient(135deg,#2d3436,#636e72);color:#fff;padding:14px 24px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:19px;font-weight:600}
+.header .subtitle{font-size:11px;opacity:.7;margin-top:2px}
+.upload-area{display:flex;align-items:center;gap:10px}
+.upload-btn{background:rgba(255,255,255,.15);border:1px dashed rgba(255,255,255,.4);color:#fff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s}
+.upload-btn:hover{background:rgba(255,255,255,.25)}
+.upload-btn input{display:none}
+.upload-status{font-size:11px;opacity:.6}
+
+.filter-bar{background:#fff;border-bottom:1px solid #e0e0e0;padding:8px 20px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.filter-group{display:flex;align-items:center;gap:4px}
+.filter-group label{font-size:11px;color:#636e72;white-space:nowrap;font-weight:500}
+.chip-group{display:flex;gap:3px;flex-wrap:wrap}
+.chip{padding:2px 9px;border-radius:10px;font-size:11px;cursor:pointer;border:1px solid #ddd;background:#f8f9fa;transition:all .12s;color:#555;white-space:nowrap}
+.chip.active{background:#0984e3;color:#fff;border-color:#0984e3}
+.chip:hover:not(.active){background:#e8e8e8}
+.filter-bar select{padding:3px 7px;border:1px solid #ddd;border-radius:4px;font-size:11px}
+.filter-bar select:focus{outline:none;border-color:#0984e3}
+
+.main{max-width:1420px;margin:0 auto;padding:12px}
+.tabs{display:flex;gap:0;border-bottom:2px solid #e0e0e0;margin-bottom:12px}
+.tab{padding:7px 18px;cursor:pointer;font-size:12px;color:#636e72;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .12s}
+.tab:hover{color:#2d3436}
+.tab.active{color:#0984e3;border-bottom-color:#0984e3;font-weight:600}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+.kpi-card{background:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 2px 6px rgba(0,0,0,.06);transition:transform .15s,box-shadow .15s}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.kpi-card .label{font-size:10px;color:#636e72;margin-bottom:3px}
+.kpi-card .value{font-size:20px;font-weight:700;color:#2d3436}
+.kpi-card .sub{font-size:10px;color:#b2bec3;margin-top:1px}
+
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.chart-card{background:#fff;border-radius:10px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.06);position:relative;transition:box-shadow .2s}
+.chart-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.chart-card h3{font-size:12px;color:#636e72;margin-bottom:8px}
+.chart-card.full{grid-column:1/-1}
+.chart-card.wide{grid-column:1/-1}
+.chart-wrap{position:relative;height:240px}
+.chart-wrap.tall{height:300px}
+.grp-pill{padding:3px 10px;border:1px solid #dfe6e9;border-radius:14px;background:#f8f9fa;color:#636e72;font-size:11px;cursor:pointer;user-select:none;transition:all .15s}
+.grp-pill:hover{border-color:#74b9ff;color:#0984e3}
+.grp-pill.active{background:#0984e3;color:#fff;border-color:#0984e3;font-weight:bold}
+.chart-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.chart-card-header h3{margin-bottom:0}
+.chart-card-expand-btn{cursor:pointer;padding:1px 7px;font-size:10px;border:1px solid #dfe6e9;border-radius:4px;background:#f8f9fa;color:#636e72;user-select:none;transition:all .15s}
+.chart-card-expand-btn:hover{background:#0984e3;color:#fff;border-color:#0984e3}
+.chart-card.expanded{position:fixed;top:3%;left:3%;width:94%;height:94%;z-index:9999;background:#fff;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.25);border-radius:10px;display:flex;flex-direction:column}
+.chart-card.expanded .chart-wrap{height:calc(100% - 50px);flex:1}
+.chart-card-close-btn{position:absolute;top:12px;right:12px;width:30px;height:30px;cursor:pointer;border-radius:50%;border:1px solid #dfe6e9;background:#f8f9fa;display:flex;align-items:center;justify-content:center;font-size:14px;color:#636e72;transition:all .15s;z-index:10}
+.chart-card-close-btn:hover{background:#d63031;color:#fff;border-color:#d63031}
+
+.sub-filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;padding:6px 10px;background:#f8f9fa;border-radius:6px}
+.sub-filter-bar label{font-size:11px;color:#636e72;font-weight:500}
+.sub-filter-bar select{padding:2px 6px;border:1px solid #ddd;border-radius:4px;font-size:11px}
+
+.table-wrap{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.table-filter-bar{padding:8px 12px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;border-bottom:1px solid #eee}
+.table-filter-bar select,.table-filter-bar input{padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:11px}
+.table-filter-bar input[type="text"]{min-width:100px;flex:1}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{background:#f8f9fa;padding:6px 8px;text-align:left;font-weight:600;color:#636e72;border-bottom:2px solid #e0e0e0;white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid #f0f0f0}
+tr:hover{background:#f8f9fa}
+.score-pos{color:#00b894;font-weight:600}
+.score-neg{color:#d63031;font-weight:600}
+
+.placeholder-card{background:#fff;border:2px dashed #ddd;border-radius:8px;padding:36px;text-align:center;color:#b2bec3}
+.placeholder-card h3{font-size:15px;margin-bottom:8px;color:#636e72}
+.placeholder-card p{font-size:12px;line-height:1.6}
+.placeholder-card .tag{display:inline-block;background:#dfe6e9;color:#636e72;padding:2px 7px;border-radius:4px;font-size:10px;margin:2px}
+
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:1000;justify-content:center;align-items:center;padding:20px}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:0;max-width:900px;width:92%;max-height:85vh;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.25);display:flex;flex-direction:column}
+.modal-box .modal-header{padding:14px 18px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;background:#fafbfc}
+.modal-box h3{font-size:14px;margin:0;color:#2d3436;font-weight:600}
+.modal-close{cursor:pointer;color:#b2bec3;font-size:22px;line-height:1;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:all .15s}
+.modal-close:hover{color:#fff;background:#d63031}
+.modal-body{padding:16px 18px;overflow:auto;flex:1}
+.modal-body table{width:100%;border-collapse:collapse;font-size:12px}
+.modal-body th{position:sticky;top:0;background:#f8f9fa;padding:8px 10px;text-align:left;font-weight:600;color:#636e72;border-bottom:2px solid #e0e0e0;white-space:nowrap;z-index:1}
+.modal-body td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+.modal-body tr:hover{background:#f8f9fa}
+.modal-body tr:nth-child(even){background:#fafbfc}
+.modal-body tr:nth-child(even):hover{background:#f1f3f5}
+
+/* 上传/刷新进度浮层 */
+.progress-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(45,52,54,.72);z-index:2000;justify-content:center;align-items:center}
+.progress-overlay.show{display:flex}
+.progress-box{background:#fff;border-radius:12px;padding:28px 32px;width:360px;max-width:90%;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center}
+.progress-box h3{font-size:15px;margin-bottom:6px;color:#2d3436;font-weight:600}
+.progress-box .desc{font-size:12px;color:#636e72;margin-bottom:18px;min-height:18px}
+.progress-bar{height:10px;background:#dfe6e9;border-radius:5px;overflow:hidden;margin-bottom:10px}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#0984e3,#74b9ff);border-radius:5px;transition:width .2s ease}
+.progress-pct{font-size:13px;font-weight:700;color:#0984e3}
+.progress-detail{font-size:11px;color:#b2bec3;margin-top:6px}
+.progress-cancel{margin-top:16px;padding:5px 16px;border:1px solid #ddd;border-radius:6px;background:#f8f9fa;color:#636e72;font-size:12px;cursor:pointer}
+.progress-cancel:hover{background:#eee}
+
+@media(max-width:768px){.chart-grid{grid-template-columns:1fr}.filter-bar{flex-direction:column;align-items:stretch}}
+
+/* ===== 差错情况分析面板样式 ===== */
+.ea-section{margin-bottom:16px}
+.ea-section h4{font-size:13px;font-weight:700;color:#2A2018;margin:0 0 8px 0;padding-left:8px;border-left:3px solid #F96C3B}
+.ea-summary-box{background:#FFF6EC;border-radius:8px;padding:14px 16px;margin-bottom:12px;border:1px solid #f5d9b8}
+.ea-summary-box p{margin:4px 0;font-size:12.5px;line-height:1.7;color:#2A2018}
+.ea-summary-box .ea-highlight{color:#F96C3B;font-weight:700}
+.ea-summary-box .ea-num{font-weight:700;color:#d63031}
+.ea-cat-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px}
+.ea-cat-table th{background:#F96C3B;color:#fff;padding:7px 8px;text-align:left;font-weight:600;white-space:nowrap}
+.ea-cat-table td{padding:6px 8px;border-bottom:1px solid #f0e0d0;vertical-align:top}
+.ea-cat-table tr:hover td{background:#FFF6EC}
+.ea-cat-table .ea-count{font-weight:700;color:#d63031;text-align:center;min-width:36px}
+.ea-cat-table .ea-pct{text-align:center;color:#0984e3;font-weight:600;min-width:40px}
+.ea-cat-table .ea-agents{color:#636e72;font-size:10.5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ea-rank-row{display:flex;align-items:center;padding:6px 8px;border-radius:6px;margin-bottom:4px;background:#fafafa;border-left:3px solid transparent;transition:background .15s}
+.ea-rank-row:hover{background:#FFF6EC}
+.ea-rank-row.risk-high{border-left-color:#d63031;background:#fef5f5}
+.ea-rank-row.risk-mid{border-left-color:#e17055;background:#fef8f3}
+.ea-rank-row .ea-rank-num{font-weight:700;font-size:13px;width:24px;text-align:center;color:#b2bec3;flex-shrink:0}
+.ea-rank-row .ea-rank-name{font-weight:600;font-size:12px;flex-shrink:0;min-width:50px}
+.ea-rank-row .ea-rank-bar{flex:1;height:18px;background:#eee;border-radius:4px;margin:0 10px;position:relative;overflow:hidden}
+.ea-rank-row .ea-rank-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#F96C3B,#DE4915);transition:width .3s}
+.ea-rank-row .ea-rank-val{font-weight:700;font-size:12px;color:#d63031;flex-shrink:0;min-width:28px;text-align:right}
+.ea-rank-row .ea-rank-tags{font-size:10px;color:#636e72;margin-left:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ea-risk-card{background:linear-gradient(135deg,#fef5f5,#fff5f5);border:1px solid #f5c6c6;border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.ea-risk-card.warn{background:linear-gradient(135deg,#fef8f3,#fffbf5);border-color:#f5d4b8}
+.ea-risk-card .ea-risk-title{font-weight:700;font-size:12px;color:#d63031;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.ea-risk-card.warn .ea-risk-title{color:#e17055}
+.ea-risk-card .ea-risk-desc{font-size:11.5px;color:#555;line-height:1.65}
+.ea-root-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;margin-top:6px}
+.ea-root-item{background:#f8f9fa;border-radius:6px;padding:10px 12px;border-left:3px solid #0984e3}
+.ea-root-item .ea-root-title{font-weight:700;font-size:11.5px;color:#0984e3;margin-bottom:3px}
+.ea-root-item .ea-root-desc{font-size:11px;color:#555;line-height:1.6}
+.ea-empty{text-align:center;color:#b2bec3;font-size:12px;padding:30px 0}
+.ea-sub-wrap{margin-top:4px}
+.ea-sub-cat{background:#fafafa;border-radius:8px;padding:10px 12px;margin-bottom:10px;border-left:3px solid #DE4915}
+.ea-sub-cat-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;border-bottom:1px solid #f0e0d0;padding-bottom:4px}
+.ea-sub-cat-head b{font-size:12.5px;color:#2A2018}
+.ea-sub-cat-total{font-size:11px;color:#d63031;font-weight:700}
+.ea-sub-row{padding:5px 0;border-bottom:1px dashed #eee}
+.ea-sub-row:last-child{border-bottom:none}
+.ea-sub-name{font-size:11.5px;color:#2A2018;font-weight:600;margin-bottom:3px}
+.ea-sub-cnt{float:right;font-size:11px;color:#d63031;font-weight:700;margin-left:6px}
+.ea-sub-bar{height:9px;background:#f0e0d0;border-radius:3px;overflow:hidden;margin-bottom:3px}
+.ea-sub-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#F96C3B,#DE4915)}
+.ea-sub-ex{font-size:10.5px;color:#636e72;line-height:1.5;margin-top:2px;padding-left:8px;border-left:2px solid #f5d9b8}
+</style>
+<script src="https://beacon.cdn.qq.com/sdk/4.5.9/beacon_web.min.js"></script>
+<script>
+(function(){
+  try{
+    var beacon=new BeaconAction({
+      appkey:'0WEB06U85YBSLJNL',
+      versionCode:'1.0.0',
+      channelID:'share',
+      delay:1000,
+      sessionDuration:30*60*1000,
+      isOversea:false,
+      needReportRqdEvent:false
+    });
+    beacon.onDirectUserAction('preview_page_view',{
+      'url':location.href,
+      'referrer':document.referrer,
+      'title':document.title,
+      'sandbox_id':'75badd9a58194961a037db0d116234fc'
+    });
+  }catch(e){}
+})();
+</script></head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>📊 客服质检数据看板</h1>
+    <div class="subtitle">基准分 91分&nbsp;&nbsp;|&nbsp;&nbsp;全部历史数据 2025/07 – 2026/07</div>
+  </div>
+  <div class="upload-area">
+    <span class="upload-status" id="uploadStatus">数据已加载</span>
+    <label class="upload-btn" title="上传最新的质检Excel，自动更新所有数据">
+      📂 上传Excel刷新数据
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+    </label>
+  </div>
+</div>
+
+<div class="filter-bar" id="filterBar">
+  <div class="filter-group">
+    <label>总分类:</label>
+    <div class="chip-group" id="typeChips">
+      <span class="chip active" data-type="all">全部质检情况</span>
+      <span class="chip" data-type="cs">客服质检</span>
+      <span class="chip" data-type="comp">客诉质检</span>
+      <span class="chip perf-chip" data-type="perf">客服绩效（预留）</span>
+    </div>
+  </div>
+  <div class="filter-group" style="flex-wrap:wrap">
+    <label>月份:</label>
+    <div class="chip-group" id="monthChips">
+      <span class="chip active" data-month="all">全部</span>
+    </div>
+    <span id="monthClearBtn" style="font-size:10px;color:#0984e3;cursor:pointer;margin-left:4px;display:none" onclick="clearMonthSelection()">✕ 清除选中</span>
+  </div>
+  <div class="filter-group">
+    <label>分组:</label>
+    <select id="groupFilter"><option value="">全部</option></select>
+  </div>
+  <div class="filter-group">
+    <label>姓名:</label>
+    <select id="agentFilter"><option value="">全部</option></select>
+  </div>
+  <div class="filter-group">
+    <label>周:</label>
+    <select id="weekFilter"><option value="">全部</option></select>
+  </div>
+</div>
+
+<div class="main">
+<div class="tabs" id="tabNav">
+  <span class="tab active" data-tab="overview">总览概览</span>
+  <span class="tab" data-tab="people">人员表现</span>
+  <span class="tab" data-tab="errors">差错分析</span>
+  <span class="tab" data-tab="unsat">不满意专项</span>
+  <span class="tab" data-tab="perf">绩效板块（预留）</span>
+</div>
+
+<div class="tab-content active" id="tab-overview">
+  <div class="kpi-row" id="kpiRow"></div>
+  <div class="sub-filter-bar" style="margin-bottom:10px">
+    <label>趋势年份:</label>
+    <select id="trendYearOverview" style="width:70px"></select>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card"><h3>月度差错率</h3><div class="chart-wrap"><canvas id="chartTrendCount"></canvas></div></div>
+    <div class="chart-card"><h3>月度平均质检得分趋势</h3><div class="chart-wrap"><canvas id="chartTrendScore"></canvas></div></div>
+    <div class="chart-card"><h3>用户情绪变化</h3><div class="chart-wrap"><canvas id="chartPerception"></canvas></div></div>
+    <div class="chart-card"><h3>不满意评价原因分布TOP6</h3><div class="chart-wrap"><canvas id="chartCategory"></canvas></div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card wide"><h3>月度加/扣分数量</h3><div class="chart-wrap"><canvas id="chartBonusDetail"></canvas></div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card wide">
+      <h3>商品专项分析 <span style="font-size:10px;color:#b2bec3">(数据来源于自研AI全检)</span></h3>
+      <div class="sub-filter-bar">
+        <label>月份:</label>
+        <select id="aiProdMonth" style="width:80px"><option value="">全部</option></select>
+        <label>情绪趋势:</label>
+        <select id="aiProdEmotion" style="width:80px">
+          <option value="">全部</option>
+          <option value="变好">变好</option>
+          <option value="稳定">稳定</option>
+          <option value="变差">变差</option>
+        </select>
+      </div>
+      <div class="chart-wrap"><canvas id="chartAIProduct"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-people">
+  <div class="chart-grid">
+    <div class="chart-card"><h3>各客服得分排名</h3><div class="chart-wrap tall"><canvas id="chartScoreRank"></canvas></div></div>
+    <div class="chart-card"><h3>各组平均得分对比</h3><div class="chart-wrap"><canvas id="chartGroupScore"></canvas></div></div>
+    <div class="chart-card wide">
+      <h3>所选客服月度得分趋势 <span style="font-size:10px;color:#b2bec3">(可同时对比小组均值与全部客服均值)</span></h3>
+      <div class="sub-filter-bar">
+        <label>时间范围:</label>
+        <select id="trendYear" style="width:70px"></select>
+        <select id="trendMonth" style="width:60px"></select>
+        <label style="margin-left:8px">客服:</label>
+        <select id="trendAgent" style="min-width:80px"></select>
+        <label style="margin-left:8px">对比对象:</label>
+        <span id="compareTargetBtns" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span>
+      </div>
+      <div class="chart-wrap tall"><canvas id="chartAgentTrend"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card wide">
+      <h3>组内人员得分分布</h3>
+      <div class="sub-filter-bar">
+        <label>分组:</label><select id="groupDistSelect" style="width:80px"></select>
+      </div>
+      <div class="chart-wrap tall"><canvas id="chartGroupDist"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card wide">
+      <h3>AI情绪变化承接人员分布 <span style="font-size:10px;color:#b2bec3">(数据来源于自研AI全检；显示各人变好/稳定/变差占比)</span></h3>
+      <div class="sub-filter-bar">
+        <label>月份:</label><select id="aiEmoMonth" style="width:90px"><option value="">全部</option></select>
+        <span style="font-size:11px;color:#b2bec3" id="aiEmoCount"></span>
+      </div>
+      <div class="chart-wrap" id="wrapAIEmotionAgent"><canvas id="chartAIEmotionAgent"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card wide">
+      <h3>AI情绪日走向
+        <select id="aiWeekSelect" style="font-size:11px;margin-left:8px;vertical-align:middle">
+          <option value="0">最新一周</option>
+          <option value="1">上周</option>
+          <option value="2">上上周</option>
+        </select>
+        <span style="font-size:10px;color:#b2bec3">(按天统计变好/稳定/变差对话数)</span>
+      </h3>
+      <div class="chart-wrap tall"><canvas id="chartAIEmotionTrend"></canvas></div>
+    </div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card full">
+      <h3>个人评分明细表</h3>
+      <div class="table-wrap">
+        <div class="table-filter-bar">
+          <label>日期:</label><select id="dtMonth"><option value="">全部月份</option></select>
+          <label>分组:</label><select id="dtGroup"><option value="">全部分组</option></select>
+          <label>姓名:</label><select id="dtAgent"><option value="">全部姓名</option></select>
+          <label>类别:</label><select id="dtCat"><option value="">全部类别</option></select>
+          <label>差错:</label><select id="dtError"><option value="">全部差错</option></select>
+          <input type="text" id="dtSearch" placeholder="搜索备注/对话ID...">
+          <span style="font-size:10px;color:#636e72;" id="dtCount"></span>
+        </div>
+        <div style="max-height:380px;overflow:auto">
+          <table><thead><tr>
+            <th>日期</th><th>姓名</th><th>分组</th><th>月份</th>
+            <th>通话类别</th><th>差错细项</th><th>感知等级</th><th>得分(91±)</th><th>备注</th>
+          </tr></thead>
+          <tbody id="detailTableBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-errors">
+  <div class="chart-grid">
+    <div class="chart-card wide">
+      <h3>月度差错率趋势 <span style="font-size:10px;color:#b2bec3">(点击下钻查看差错类型和人员)</span></h3>
+      <div class="sub-filter-bar">
+        <label>差错类型:</label>
+        <select id="errTotalType" style="min-width:100px"><option value="">全部差错</option></select>
+        <label>年份:</label>
+        <select id="errTotalYear" style="width:65px"><option value="">全部</option></select>
+        <label>月份:</label>
+        <select id="errTotalMonth" style="width:60px"><option value="">全年</option></select>
+      </div>
+      <div class="chart-wrap"><canvas id="chartErrorTotalTrend"></canvas></div>
+    </div>
+    <div class="chart-card"><h3>差错细项TOP10 <span style="font-size:10px;color:#b2bec3">(点击查看人员)</span></h3><div class="chart-wrap tall"><canvas id="chartErrorTop"></canvas></div></div>
+    <div class="chart-card"><h3>专项商品差错TOP6 <span style="font-size:10px;color:#b2bec3">(是否异常=是；点击查看差错类型)</span></h3><div class="chart-wrap tall"><canvas id="chartZxErrorProduct"></canvas></div></div>
+    <div class="chart-card"><h3>人员姓名 × 差错细项 <span style="font-size:10px;color:#b2bec3">(点击查看明细)</span></h3>
+      <div class="chart-wrap tall" style="height:380px"><canvas id="chartErrorHeat"></canvas></div></div>
+    <div class="chart-card"><h3>各组差错类型对比 <span style="font-size:10px;color:#b2bec3">(点击查看人员明细)</span></h3>
+      <div class="chart-wrap tall"><canvas id="chartErrorGroup"></canvas></div></div>
+    <div class="chart-card wide" id="errorAnalysisCard">
+      <h3>📋 当月差错情况分析 <span id="errorAnalysisSubtitle" style="font-size:10px;color:#b2bec3"></span></h3>
+      <div id="errorAnalysisContent" style="padding:4px 0"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-unsat">
+  <div class="kpi-row" id="unsatKpiRow"></div>
+  <div class="chart-grid">
+    <div class="chart-card wide"><h3>近半年不满意数量走势</h3><div class="chart-wrap"><canvas id="chartUnsatTrend"></canvas></div></div>
+    <div class="chart-card"><h3>不满意发生环节分布</h3><div class="chart-wrap" style="height:320px"><canvas id="chartUnsatLink"></canvas></div></div>
+    <div class="chart-card"><h3>不满意中分类环比对比 <span style="font-size:10px;color:#b2bec3">(本月 vs 上月)</span></h3><div class="chart-wrap tall"><canvas id="chartUnsatMidCat"></canvas></div></div>
+    <div class="chart-card"><h3>各客服不满意数量 <span style="font-size:10px;color:#b2bec3">(专项分<100)</span></h3><div class="chart-wrap"><canvas id="chartUnsatAgent"></canvas></div></div>
+    <div class="chart-card"><h3>不满意商品TOP10 <span style="font-size:10px;color:#b2bec3">(来自“不满意专项-商品/活动名称”)</span></h3><div class="chart-wrap"><canvas id="chartUnsatShop"></canvas></div></div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-perf">
+  <div class="placeholder-card">
+    <h3>📋 客服绩效板块 — 预留接口</h3>
+    <p>这里将展示客服绩效数据，包含：</p>
+    <p style="margin-top:8px">
+      <span class="tag">客服质检绩效：按人汇总质检得分</span>
+      <span class="tag">抽检量</span>
+      <span class="tag">达标率</span>
+      <span class="tag">客诉绩效：按人汇总客诉抽检情况</span>
+    </p>
+    <p style="margin-top:14px;color:#636e72;font-size:11px">数据接入方式：Excel / API / 手动录入（待定）</p>
+    <p style="margin-top:6px;font-size:10px;color:#b2bec3">切换顶部筛选器中的"客服绩效"可触发绩效视图</p>
+  </div>
+</div>
+
+</div>
+
+<!-- Modal for error drill-down -->
+<div class="modal-overlay" id="errorModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalTitle">人员明细</h3>
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- 上传/刷新进度浮层 -->
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-box">
+    <h3 id="progressTitle">正在上传数据</h3>
+    <div class="desc" id="progressDesc">准备读取文件...</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-pct" id="progressPct">0%</div>
+    <div class="progress-detail" id="progressDetail"></div>
+    <button class="progress-cancel" id="progressCancel" style="display:none">取消</button>
+  </div>
+</div>
+
+<script>
+// Global error handler - catches JS errors and shows them on page
+window.onerror = function(msg, source, line, col, err) {console.error("GLOBAL_ERROR:", msg, source, line); try{var s=document.getElementById("uploadStatus");if(s)s.textContent="JS:"+msg+" L"+line;}catch(e){}
+  const status = document.getElementById('uploadStatus');
+  if(status) status.textContent = 'JS错误: '+msg+' (行'+line+')';
+  return false;
+};
+
+Chart.register(ChartDataLabels);
+const BASE = 91;
+let allData = { cs: [], comp: [], unsat: [], gm: {}, ai: [], totalCount: {} };
+
+// 差错分析「类型×月份 人员集中度」板块的当前筛选差错池缓存（供下拉框 onchange 复用，避免重复计算）
+var eaPoolCache = [];
+
+// ===== 花名 → 真名 映射表（来源：李师组与田敏组成员名单.xlsx）=====
+// 看板原始数据中 n 字段可能为花名，统一归一化为真名，避免同一人因花名不同被拆成多条统计。
+const NAME_MAP = {
+  '有点子好运的七月': '杜娇',
+  '哆来咪的哆哆': '刘赛男',
+  '迪士尼在逃的糖糖': '王静',
+  '想开了的木槿': '唐帼琼',
+  '努力码字中的小羊': '杨阳',
+  '超爱吃的团团': '李妍',
+  '人生需要passion的星星': '李庆',
+  'cici有回应的啾啾': '刘玥燕',
+  '正在kuku输入中的五五': '张芳瑜',
+  '日渐富有的咘咘': '陈转',
+  '要做No.1的北北': '李德奇',
+  '奈斯兔米优的小九': '龚海林',
+  '干饭赶趟的桑枝': '吴靖偎',
+  '住少爷隔壁的球球': '黎园',
+  '包甜哒西瓜': '何文',
+  '吃好睡好上好班的小玉': '向玉婷',
+  '哇哈哈哈的梧桐': '林蓉',
+  '爱整点薯条的彭彭': '彭阳斌',
+  '滚动的汤圆': '汤凌峰',
+  '想拥有萨摩耶的耶耶': '阳倩'
+};
+// 花名→真名；映射表中无记录则原样返回（保留真名或未知花名，便于发现遗漏）
+function resolveName(n) {
+  if (!n) return n;
+  return NAME_MAP[n] || n;
+}
+// 加载数据后统一把各记录 n 字段归一化为真名
+function normalizeNames() {
+  ['cs', 'comp', 'zx', 'unsat', 'ai'].forEach(k => {
+    (allData[k] || []).forEach(d => { if (d && d.n) d.n = resolveName(d.n); });
+  });
+}
+let charts = {};
+const BASE_COLORS = ['#0984e3','#00b894','#fdcb6e','#e17055','#6c5ce7','#00cec9','#fab1a0','#81ecec','#ff7675','#74b9ff','#a29bfe','#55efc4','#f8a5c2','#63cdda','#cf6a87','#786fa6'];
+const DL_OPTS = { color:'#2d3436', font:{weight:'bold',size:9}, anchor:'end', align:'top', offset:2 };
+// 过滤无效小组名称（空值、未分组、#N/A 等）
+function isValidGroup(g) { return g && g !== '未分组' && !String(g).toUpperCase().startsWith('#N') && !String(g).startsWith('#'); }
+// 有效小组 = 数据中实际出现且名称有效的小组（按月动态，含罗雄强等历史组）+ 客诉组兜底
+function getValidGroups() {
+  const set = new Set();
+  allData.cs.forEach(d => { if (isValidGroup(d.g)) set.add(d.g); });
+  set.add('客诉组');
+  return set;
+}
+// 统一解析记录所属小组（按月逻辑核心）：
+// 1) 优先使用每条记录自带的 d.g —— 源数据已按月份正确区分（如黎园 2026/05前=罗雄强，之后=田敏）
+// 2) 客诉类记录无小组列，统一归客诉组
+// 3) 仅当 d.g 为空时，才用分类管理(gm) 兜底
+function resolveGroup(d) {
+  if (!d || !d.n) return '';
+  if (d.g && isValidGroup(d.g)) return d.g;
+  if (d.type === 'comp') return '客诉组';
+  const gmGroup = allData.gm[d.n];
+  if (gmGroup && isValidGroup(gmGroup)) return gmGroup;
+  return '未分组';
+}
+// 获取某客服在最新月份的小组（用于"所属小组"对比，避免用历史月份误标）
+function getAgentLatestGroup(name) {
+  const recs = allData.cs.filter(d => d.n === name).sort((a,b) => a.m.localeCompare(b.m));
+  return recs.length > 0 ? resolveGroup(recs[recs.length-1]) : '';
+}
+
+async function loadJSON() {
+  try {
+    fetch('dashboard_data.json?_t='+Date.now()).then(r=>r.json()).then(data=>{ allData = data; normalizeNames(); document.getElementById('uploadStatus').textContent='已加载数据: '+(allData.cs.length+allData.comp.length)+' 条记录'; const initTab = new URLSearchParams(location.search).get('tab'); init(initTab||'overview'); });
+  } catch(e) {
+    document.getElementById('uploadStatus').textContent = '加载失败: '+e.message;
+  }
+}
+
+// 上传/刷新进度浮层控制
+function showProgress(title, desc) {
+  const ov = document.getElementById('progressOverlay');
+  document.getElementById('progressTitle').textContent = title || '正在处理';
+  document.getElementById('progressDesc').textContent = desc || '';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressPct').textContent = '0%';
+  document.getElementById('progressDetail').textContent = '';
+  ov.classList.add('show');
+}
+function hideProgress() {
+  document.getElementById('progressOverlay').classList.remove('show');
+}
+function setProgress(pct, detail) {
+  const v = Math.max(0, Math.min(100, Math.round(pct)));
+  document.getElementById('progressFill').style.width = v + '%';
+  document.getElementById('progressPct').textContent = v + '%';
+  if(detail) document.getElementById('progressDetail').textContent = detail;
+}
+
+function handleFileUpload(file) {
+  const reader = new FileReader();
+  const statusEl = document.getElementById('uploadStatus');
+
+  showProgress('正在上传Excel', '准备读取文件：' + file.name);
+
+  // 文件读取进度
+  reader.onprogress = function(e) {
+    if(e.lengthComputable) {
+      const pct = e.loaded / e.total * 100;
+      const loadedMB = (e.loaded/1024/1024).toFixed(1);
+      const totalMB = (e.total/1024/1024).toFixed(1);
+      setProgress(pct * 0.25, '读取文件 ' + loadedMB + 'MB / ' + totalMB + 'MB');
+      statusEl.textContent = '正在读取文件 ' + loadedMB + 'MB / ' + totalMB + 'MB (' + Math.round(pct) + '%)';
+    } else {
+      setProgress(12, '正在读取文件...');
+      statusEl.textContent = '正在读取文件... ' + (e.loaded/1024/1024).toFixed(1) + 'MB';
+    }
+  };
+
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      setProgress(30, '正在解析Excel，共 ' + (data.length/1024/1024).toFixed(1) + 'MB');
+      const wb = XLSX.read(data, {type:'array',codepage:936});
+      const names = wb.SheetNames;
+      setProgress(35, '读取完成，共 ' + names.length + ' 个Sheet，正在解析...');
+      statusEl.textContent = '读取完成，共 '+names.length+' 个Sheet，正在解析...';
+
+      const gbk = v => (v === null || v === undefined) ? '' : String(v);
+      const parseDate = v => {
+        if (!v) return '';
+        if (typeof v === 'number') { const d = new Date((v - 25569) * 86400 * 1000); return d.toISOString().slice(0,10); }
+        if (v instanceof Date) return v.toISOString().slice(0,10);
+        return String(v).slice(0,10);
+      };
+      const parseMonth = v => { if(!v) return ''; return String(v).replace(/-/g,'/'); };
+      const parseScore = v => { if(v===null||v===undefined||v==='') return 0; const n=Number(v); return isNaN(n)?0:n; };
+
+      const toRows = (ws) => XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+      const renameError = v => ({'其他业务流程差错':'业务流程差错','小额打款普通差错':'小额打款非金额差错','小额打款重大差错':'小额打款金额差错'}[gbk(v)] || gbk(v));
+
+      // ====== 客服数据 ======
+      setProgress(38, '解析客服存档...');
+      const csData = [];
+      const csArchive = toRows(wb.Sheets['客服存档']);
+      for (let i=1; i<csArchive.length; i++) {
+        const r=csArchive[i]; const name=gbk(r[3]); const month=parseMonth(r[12]);
+        if (!name||!month) continue;
+        csData.push({ d:parseDate(r[0]), td:parseDate(r[1]), i:gbk(r[2]), n:name,
+          sid:String(r[4]||'').slice(0,12), c:gbk(r[6]), e:renameError(r[7]), p:gbk(r[8]),
+          rmk:gbk(r[9]), g:gbk(r[10]), s:parseScore(r[11]), m:month, type:'cs' });
+      }
+      setProgress(42, '解析客服当前数据...');
+      const csCurr = toRows(wb.Sheets['客服']);
+      for (let i=1; i<csCurr.length; i++) {
+        const r=csCurr[i]; const name=gbk(r[3]); const month=parseMonth(r[12]);
+        if (!name||!month) continue;
+        csData.push({ d:parseDate(r[0]), td:parseDate(r[1]), i:gbk(r[2]), n:name,
+          sid:String(r[4]||'').slice(0,12), c:gbk(r[6]), e:renameError(r[7]), p:gbk(r[8]),
+          rmk:gbk(r[9]), g:gbk(r[10]), s:parseScore(r[11]), m:month, type:'cs' });
+      }
+
+      // ====== 客诉数据 ======
+      setProgress(48, '解析客诉存档...');
+      const compData = [];
+      const compArchive = toRows(wb.Sheets['客诉存档']);
+      for (let i=1; i<compArchive.length; i++) {
+        const r=compArchive[i]; const name=gbk(r[3]); const month=parseMonth(r[11]);
+        if (!name||!month) continue;
+        compData.push({ d:parseDate(r[0]), td:parseDate(r[1]), i:gbk(r[2]), n:name,
+          sid:String(r[4]||'').slice(0,12), c:gbk(r[6]), e:renameError(r[7]), p:gbk(r[8]),
+          rmk:gbk(r[9]), s:parseScore(r[10]), m:month, type:'comp' });
+      }
+      setProgress(52, '解析客诉当前数据...');
+      const compCurr = toRows(wb.Sheets['客诉']);
+      for (let i=1; i<compCurr.length; i++) {
+        const r=compCurr[i]; const name=gbk(r[3]); const month=parseMonth(r[11]);
+        if (!name||!month) continue;
+        compData.push({ d:parseDate(r[0]), td:parseDate(r[1]), i:gbk(r[2]), n:name,
+          sid:String(r[4]||'').slice(0,12), c:gbk(r[6]), e:renameError(r[7]), p:gbk(r[8]),
+          rmk:gbk(r[9]), s:parseScore(r[10]), m:month, type:'comp' });
+      }
+
+      // ====== 不满意专项 ======
+      setProgress(58, '解析不满意专项...');
+      const unsatData = [];
+      const unsatSheet = toRows(wb.Sheets['不满意专项']);
+      for (let i=1; i<unsatSheet.length; i++) {
+        const r=unsatSheet[i]; const agent=gbk(r[3]);
+        if (!agent) continue;
+        let m='';
+        const sd=r[0];
+        if (typeof sd === 'number') { const d=new Date((sd-25569)*86400*1000); m=d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+        else if (sd) m=String(sd).replace(/-/g,'/').slice(0,7);
+        unsatData.push({ m, td:parseDate(r[1]), grp:gbk(r[2]), n:agent, employee_id:gbk(r[4]),
+          cust:String(r[5]||'').slice(0,20), ss:parseScore(r[7]),
+          eval:gbk(r[8]), detail:gbk(r[9]), rb:gbk(r[10]), rl:gbk(r[11]), rs:gbk(r[12]),
+          product_name:gbk(r[13]), product_id:gbk(r[14]), department:gbk(r[15]), owner:gbk(r[16]) });
+      }
+
+      // ====== 分组映射 ======
+      setProgress(64, '解析分组映射...');
+      const gm = {};
+      const catSheet = toRows(wb.Sheets['分类管理']);
+      for (let i=1; i<catSheet.length; i++) {
+        const r=catSheet[i];
+        if (r[0] && r[1]) { gm[gbk(r[0])] = gbk(r[1]); }
+      }
+
+      // ====== 抽检总量 ======
+      setProgress(70, '解析抽检总量...');
+      const totalCount = {};
+      const totalRows = toRows(wb.Sheets['抽检总量']);
+      for(let i=1;i<totalRows.length;i++){
+        const r=totalRows[i]; const name=gbk(r[1]); const date=parseDate(r[2]);
+        if(!name||!date) continue;
+        const month=date.slice(0,7).replace(/-/g,'/');
+        const key=name+'|'+month;
+        totalCount[key]=(totalCount[key]||0)+1;
+      }
+
+      // ====== AI抽检（全量） ======
+      // 表头：0会话ID,1用户uuid,2客服姓名,3服务时间,4客服问题分类,5商品ID,6商品名,7商品分类,
+      //       8用户情绪_初始状态,9用户情绪_趋势,10客服态度,11客服态度_争执,12客服态度_专业性,
+      //       13AI问题_分类,14问题_是否提出方案,15问题_是否接受,16问题_是否解决,17总结
+      setProgress(76, '解析AI抽检数据...');
+      const aiData = [];
+      const aiRows = toRows(wb.Sheets['ai抽检']);
+      const aiTotal = aiRows.length - 1;
+      for(let i=1;i<aiRows.length;i++){
+        const r=aiRows[i]; const agent=gbk(r[2]); const date=parseDate(r[3]);
+        if(!agent||!date) continue;
+        aiData.push({
+          n:agent, m:date.slice(0,7).replace(/-/g,'/'),
+          etrend:gbk(r[9]), product_name:gbk(r[6]), ai_cat:gbk(r[13])
+        });
+        if(i % 20000 === 0) setProgress(76 + Math.floor((i / aiTotal) * 18), 'AI抽检 ' + i + ' / ' + aiTotal);
+      }
+
+      setProgress(96, '正在刷新看板...');
+      allData = { cs: csData, comp: compData, unsat: unsatData, gm: gm, totalCount: totalCount, ai: aiData };
+      normalizeNames();
+      document.getElementById('uploadStatus').textContent =
+        ' Excel数据已加载: '+(csData.length+compData.length)+' 条 (客服'+csData.length+', 客诉'+compData.length+')';
+      init();
+      setProgress(100, '完成');
+      setTimeout(hideProgress, 600);
+    } catch(err) {
+      hideProgress();
+      document.getElementById('uploadStatus').textContent = ' 解析失败: '+err.message;
+      alert('解析失败: '+err.message+'\n请检查Excel格式是否正确。');
+    }
+  };
+
+  reader.onerror = function() {
+    hideProgress();
+    statusEl.textContent = '文件读取失败';
+    alert('文件读取失败，请重试');
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function init() {
+  initFilters();
+  const initTab = new URLSearchParams(location.search).get('tab');
+  switchTab(initTab || 'overview');
+  setupEventListeners();
+}
+
+// ====== 事件绑定 ======
+function setupEventListeners() {
+  // Tab 点击切换
+  document.querySelectorAll('.tab').forEach(function(el){
+    el.onclick = function(){ switchTab(this.dataset.tab); };
+  });
+  // 质检类型 chips 切换
+  document.querySelectorAll('#typeChips .chip').forEach(function(el){
+    el.onclick = function(){ toggleTypeChip(this); };
+  });
+  // Month chips 切换
+  document.querySelectorAll('#monthChips .chip').forEach(function(el){
+    el.onclick = function(){ toggleMonthChip(this); };
+  });
+  // 点击modal遮罩关闭
+  document.getElementById('errorModal').onclick = function(e){
+    if(e.target === this) closeModal();
+  };
+  // 上传Excel刷新数据
+  const fileInput = document.getElementById('fileInput');
+  if(fileInput) {
+    fileInput.onchange = function(e){
+      const file = e.target.files && e.target.files[0];
+      if(file) handleFileUpload(file);
+      fileInput.value = '';
+    };
+  }
+}
+
+// ====== Modal ======
+function closeModal() {
+  document.getElementById('errorModal').classList.remove('show');
+}
+function showModal(title, agentList) {
+  let html = '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="text-align:left">姓名</th><th>调整分</th><th>次数</th><th>得分</th></tr></thead><tbody>';
+  if(agentList && agentList.length) {
+    agentList.forEach(function(item){
+      const n = item[0];
+      const v = item[1];
+      const adj = v.sumAdj || 0;
+      const cnt = v.count || 0;
+      const nonzero = v.nonzeroCount || cnt;
+      const score = 91 + (nonzero ? adj / nonzero : 0);
+      const sign = adj >= 0 ? '+' : '';
+      html += '<tr><td>'+n+'</td><td style="text-align:right;color:'+(adj>=0?'#00b894':'#d63031')+'">'+sign+adj.toFixed(2)+'</td><td style="text-align:center">'+cnt+'次</td><td style="text-align:right;font-weight:bold">'+score.toFixed(2)+'</td></tr>';
+    });
+  }
+  html += '</tbody></table>';
+  document.getElementById('modalTitle').textContent = title || '明细';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('errorModal').classList.add('show');
+}
+
+// ====== 加扣分明细弹窗（支持组别、排序、筛选） ======
+let bonusModalState = { month:'', data:[], sortKey:'negCnt', sortDesc:true, filterType:'all', search:'' };
+
+function getAgentGroup(name, month) {
+  if(!name) return '';
+  // 优先取该月实际记录的小组，体现按月分组
+  const rec = allData.cs.find(d=>d.n===name && (!month || d.m===month))
+           || allData.comp.find(d=>d.n===name && (!month || d.m===month));
+  if(rec) return resolveGroup(rec);
+  // 无对应月份记录时，回落分类管理
+  const gmGroup = allData.gm[name];
+  return (gmGroup && isValidGroup(gmGroup)) ? gmGroup : '';
+}
+
+function showBonusModal(month, agentMap) {
+  bonusModalState.month = month;
+  bonusModalState.data = Object.entries(agentMap).map(([name, v]) => ({
+    name, group: getAgentGroup(name, month), ...v
+  }));
+  bonusModalState.sortKey = 'negCnt';
+  bonusModalState.sortDesc = true;
+  bonusModalState.filterType = 'all';
+  bonusModalState.search = '';
+  renderBonusModal();
+}
+
+function sortBonusModal(key) {
+  if(bonusModalState.sortKey === key) {
+    bonusModalState.sortDesc = !bonusModalState.sortDesc;
+  } else {
+    bonusModalState.sortKey = key;
+    bonusModalState.sortDesc = true;
+  }
+  renderBonusModal();
+}
+
+function sortIcon(key) {
+  if(bonusModalState.sortKey !== key) return '⇅';
+  return bonusModalState.sortDesc ? '↓' : '↑';
+}
+
+function renderBonusModal() {
+  let list = bonusModalState.data.slice();
+  if(bonusModalState.filterType === 'pos') list = list.filter(d => d.posCnt > 0);
+  if(bonusModalState.filterType === 'neg') list = list.filter(d => d.negCnt > 0);
+  const s = bonusModalState.search.trim().toLowerCase();
+  if(s) list = list.filter(d => d.name.toLowerCase().includes(s) || d.group.toLowerCase().includes(s));
+
+  list.sort((a,b) => {
+    let va = a[bonusModalState.sortKey], vb = b[bonusModalState.sortKey];
+    if(typeof va === 'string') va = va.toLowerCase();
+    if(typeof vb === 'string') vb = vb.toLowerCase();
+    let cmp = 0;
+    if(va > vb) cmp = 1;
+    else if(va < vb) cmp = -1;
+    return bonusModalState.sortDesc ? cmp : -cmp;
+  });
+
+  const html = '<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+    '<input type="text" id="bonusSearch" placeholder="搜索姓名/组别" value="' + escapeHtml(bonusModalState.search) + '" ' +
+    'style="padding:4px 8px;border:1px solid #dfe6e9;border-radius:4px;font-size:12px;flex:1;min-width:120px">' +
+    '<span class="chip' + (bonusModalState.filterType==='all'?' active':'') + '" data-bfilter="all" style="cursor:pointer;font-size:11px">全部</span>' +
+    '<span class="chip' + (bonusModalState.filterType==='pos'?' active':'') + '" data-bfilter="pos" style="cursor:pointer;font-size:11px">只看加分</span>' +
+    '<span class="chip' + (bonusModalState.filterType==='neg'?' active':'') + '" data-bfilter="neg" style="cursor:pointer;font-size:11px">只看扣分</span>' +
+    '</div>' +
+    '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead>' +
+    '<tr>' +
+    '<th style="text-align:left;cursor:pointer" onclick="sortBonusModal(\'name\')">姓名 ' + sortIcon('name') + '</th>' +
+    '<th style="text-align:left;cursor:pointer" onclick="sortBonusModal(\'group\')">组别 ' + sortIcon('group') + '</th>' +
+    '<th style="text-align:center;cursor:pointer;color:#00b894" onclick="sortBonusModal(\'posCnt\')">加分次数 ' + sortIcon('posCnt') + '</th>' +
+    '<th style="text-align:center;cursor:pointer;color:#00b894" onclick="sortBonusModal(\'posSum\')">加分合计 ' + sortIcon('posSum') + '</th>' +
+    '<th style="text-align:center;cursor:pointer;color:#d63031" onclick="sortBonusModal(\'negCnt\')">扣分次数 ' + sortIcon('negCnt') + '</th>' +
+    '<th style="text-align:center;cursor:pointer;color:#d63031" onclick="sortBonusModal(\'negSum\')">扣分合计 ' + sortIcon('negSum') + '</th>' +
+    '</tr></thead><tbody>' +
+    list.map(d =>
+      '<tr>' +
+      '<td>' + escapeHtml(d.name) + '</td>' +
+      '<td>' + escapeHtml(d.group || '-') + '</td>' +
+      '<td style="text-align:center;color:#00b894">' + d.posCnt + '</td>' +
+      '<td style="text-align:center;color:#00b894">' + (d.posSum > 0 ? '+' + d.posSum.toFixed(1) : d.posSum.toFixed(1)) + '</td>' +
+      '<td style="text-align:center;color:#d63031">' + d.negCnt + '</td>' +
+      '<td style="text-align:center;color:#d63031">' + d.negSum.toFixed(1) + '</td>' +
+      '</tr>'
+    ).join('') +
+    '</tbody></table>' +
+    '<div style="margin-top:8px;font-size:11px;color:#636e72">共 ' + list.length + ' 人</div>';
+
+  document.getElementById('modalTitle').textContent = bonusModalState.month + ' · 加扣分明细';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('errorModal').classList.add('show');
+
+  const input = document.getElementById('bonusSearch');
+  if(input) {
+    input.oninput = function() { bonusModalState.search = this.value; renderBonusModal(); };
+    input.focus();
+  }
+  document.querySelectorAll('[data-bfilter]').forEach(el => {
+    el.onclick = function() { bonusModalState.filterType = this.dataset.bfilter; renderBonusModal(); };
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+let filterState = { type:'all', months:[], group:'', agent:'', week:'' };
+
+function initFilters() {
+  const months = [...new Set(
+    allData.cs.map(d=>d.m)
+      .concat(allData.comp.map(d=>d.m))
+      .concat(allData.unsat.map(d=>d.m))
+  )].sort();
+  const latestMonth = months[months.length - 1] || '';  // 最新月份
+  // 月份芯片按从新到旧排列
+  const monthsDesc = months.slice().reverse();
+  const mc = document.getElementById('monthChips');
+  mc.innerHTML = '<span class="chip" data-month="all">全部</span>';
+  monthsDesc.forEach(m => {
+    const s = document.createElement('span');
+    // 默认激活最新月份
+    s.className = 'chip' + (m === latestMonth ? ' active' : '');
+    s.dataset.month = m; s.textContent = m;
+    mc.appendChild(s);
+  });
+  filterState.months = latestMonth ? [latestMonth] : [...months];
+  // Init overview year selector
+  const ovY = document.getElementById('trendYearOverview');
+  const years = [...new Set(months.filter(m=>m).map(m=>m.split('/')[0]))].sort().filter(y=>y);
+  ovY.innerHTML = '<option value="">全部年份</option>'+years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  ovY.value = years[years.length-1];
+  ovY.onchange = function(){ switchTab(document.querySelector('.tab.active').dataset.tab); };
+  // 初始化周下拉（上周五~本周四为一组）
+  initWeekFilter();
+  updateGroupFilter(); updateAgentFilter();
+}
+
+// ====== 质检类型芯片切换（可取消） ======
+function toggleTypeChip(el) {
+  const chips = document.querySelectorAll('#typeChips .chip');
+  const type = el.dataset.type;
+  // 绩效预留不响应
+  if(type === 'perf') return;
+  if(el.classList.contains('active')) {
+    // 再次点击已选中的，取消选择并恢复为“全部”
+    chips.forEach(c => c.classList.remove('active'));
+    document.querySelector('#typeChips .chip[data-type="all"]').classList.add('active');
+    filterState.type = 'all';
+  } else {
+    // 切换到新类型
+    chips.forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    filterState.type = type;
+  }
+  updateGroupFilter(); updateAgentFilter();
+  const at = document.querySelector('.tab.active');
+  if(at) switchTab(at.dataset.tab);
+}
+
+// ====== 月份芯片切换 ======
+function toggleMonthChip(el) {
+  const isAll = el.dataset.month === 'all';
+  if(isAll || el.classList.contains('active')) {
+    // 点"全部"或者再点已选的→只保留"全部"
+    document.querySelectorAll('#monthChips .chip').forEach(function(c){c.classList.remove('active');});
+    document.querySelector('#monthChips .chip[data-month="all"]').classList.add('active');
+    filterState.months = [];
+  } else {
+    // 点其他月份
+    document.querySelector('#monthChips .chip[data-month="all"]').classList.remove('active');
+    el.classList.toggle('active');
+    // 收集所有选中月份
+    filterState.months = [...document.querySelectorAll('#monthChips .chip.active')].map(function(c){return c.dataset.month;}).filter(function(m){return m !== 'all';});
+  }
+  // 刷新小组下拉（体现按月分组）后，再刷新当前tab
+  updateGroupFilter();
+  const at = document.querySelector('.tab.active');
+  if(at) switchTab(at.dataset.tab);
+}
+function clearMonthSelection() {
+  // 清除所有选中
+  document.querySelectorAll('#monthChips .chip').forEach(function(c){c.classList.remove('active');});
+  document.querySelector('#monthChips .chip[data-month="all"]').classList.add('active');
+  filterState.months = [];
+  const at = document.querySelector('.tab.active');
+  if(at) switchTab(at.dataset.tab);
+}
+
+// 计算“上周五~本周四”的日期范围
+function getWeekRange(d) {
+  d = d || new Date();
+  const day = d.getDay(); // 0=Sun, 5=Fri, 4=Thu
+  // 本周四的偏移：(4 - day + 7) % 7  (上周五时 day=5, 偏移=6)
+  const thisThuOffset = (4 - day + 7) % 7;
+  const thisThu = new Date(d.getFullYear(), d.getMonth(), d.getDate() + thisThuOffset);
+  // 上周五 = 本周四 - 6 天
+  const lastFri = new Date(thisThu.getFullYear(), thisThu.getMonth(), thisThu.getDate() - 6);
+  return [lastFri, thisThu];
+}
+function fmtDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function initWeekFilter() {
+  const sel = document.getElementById('weekFilter');
+  if(!sel) return;
+  const today = new Date();
+  const allDates = [...new Set(allData.cs.map(d=>d.d).concat(allData.comp.map(d=>d.d)).filter(Boolean))].sort();
+  if(allDates.length === 0) return;
+  // 生成最近8周的范围（基于今天所在的那一周 + 之前7周）
+  const weeks = [];
+  const [baseFri, baseThu] = getWeekRange(today);
+  for(let i=7; i>=0; i--) {
+    const fri = new Date(baseFri.getFullYear(), baseFri.getMonth(), baseFri.getDate() - i*7);
+    const thu = new Date(baseThu.getFullYear(), baseThu.getMonth(), baseThu.getDate() - i*7);
+    const start = fmtDate(fri);
+    const end = fmtDate(thu);
+    weeks.push({label: start.slice(5)+' ~ '+end.slice(5), start, end});
+  }
+  sel.innerHTML = '<option value="">全部(不按周筛)</option>' + weeks.map(w=>`<option value="${w.start}~${w.end}">第${weeks.length-weeks.indexOf(w)}周 ${w.label}</option>`).join('');
+  sel.onchange = function(){
+    filterState.week = this.value;
+    const at = document.querySelector('.tab.active');
+    if(at) switchTab(at.dataset.tab);
+  };
+}
+
+function updateGroupFilter() {
+  const sel = document.getElementById('groupFilter');
+  const cur = sel.value;
+  // 仅取当前（含月份）筛选下的数据，使下拉体现按月分组
+  const data = getBaseData().filter(d => filterState.months.length === 0 || filterState.months.includes(d.m));
+  // 使用统一小组解析，过滤无效小组；下拉只展示本筛选下实际有数据的小组
+  const groups = [...new Set(data.map(d=>resolveGroup(d)).filter(isValidGroup))].sort();
+  const allGrps = [...new Set([...groups, '客诉组'])].sort();
+  sel.innerHTML = '<option value="">全部</option>';
+  allGrps.forEach(g => { const o=document.createElement('option'); o.value=g; o.textContent=g; sel.appendChild(o); });
+  sel.value = allGrps.includes(cur) ? cur : '';
+  filterState.group = sel.value;
+}
+
+function updateAgentFilter() {
+  const sel = document.getElementById('agentFilter');
+  const cur = sel.value;
+  const data = getFilteredDataByType();
+  let agents = [...new Set(data.map(d=>d.n))].sort();
+  sel.innerHTML = '<option value="">全部</option>';
+  agents.forEach(a => { const o=document.createElement('option'); o.value=a; o.textContent=a; sel.appendChild(o); });
+  if(agents.includes(cur)) sel.value = cur;
+  filterState.agent = sel.value;
+}
+
+function getBaseData() {
+  if(filterState.type==='cs') return allData.cs;
+  if(filterState.type==='comp') return allData.comp;
+  return allData.cs.concat(allData.comp.map(d=>({...d,g:''})));
+}
+function getFilteredDataByType() {
+  let data = getBaseData();
+  if(filterState.months.length>0) data = data.filter(d => filterState.months.includes(d.m));
+  if(filterState.week) {
+    const [start, end] = filterState.week.split('~');
+    data = data.filter(d => d.d >= start && d.d <= end);
+  }
+  return data;
+}
+function getFilteredData() {
+  let data = getFilteredDataByType();
+  if(filterState.group) data = data.filter(d => resolveGroup(d) === filterState.group);
+  if(filterState.agent) data = data.filter(d => d.n===filterState.agent);
+  return data;
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
+  document.getElementById('tab-'+tabName).classList.add('active');
+  document.querySelector('.tab[data-tab="'+tabName+'"]').classList.add('active');
+  Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});
+  charts = {};
+  if(tabName==='overview') renderOverview();
+  else if(tabName==='people') renderPeople();
+  else if(tabName==='errors') renderErrors();
+  else if(tabName==='unsat') renderUnsat();
+  
+}
+
+// 下钻：某月的差错类型分布 → 该类型的明细
+function drillErrorMonth(m) {
+  let data = getErrPool().filter(d => d.m === m);
+  const errMap = {};
+  data.forEach(d => {
+    if(!errMap[d.e]) errMap[d.e] = {count:0, records:[]};
+    errMap[d.e].count++;
+    errMap[d.e].records.push(d);
+  });
+  const sorted = Object.entries(errMap).sort((a,b)=>b[1].count-a[1].count);
+  const total = data.length;
+  let html = '<div style="margin-bottom:10px;font-size:12px;color:#636e72">共 '+total+' 条扣分记录</div>';
+  html += '<table><thead><tr><th>差错类型</th><th>次数</th><th>占比</th><th>操作</th></tr></thead><tbody>';
+  sorted.forEach(([e, v]) => {
+    html += '<tr><td>'+escapeHtml(e)+'</td><td style="text-align:center">'+v.count+'</td><td style="text-align:center">'+(total>0?(v.count/total*100).toFixed(1):0)+'%</td><td><span class="chip" style="cursor:pointer;font-size:11px" data-err="'+escapeHtml(e)+'">查看明细</span></td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('modalTitle').textContent = m + ' · 差错类型分布';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('errorModal').classList.add('show');
+  document.querySelectorAll('#modalBody [data-err]').forEach(btn => {
+    btn.onclick = function() {
+      const errType = this.dataset.err;
+      const records = errMap[errType].records.slice();
+      // 按姓名聚合，只显示姓名和扣分数量
+      const nameCount = {};
+      records.forEach(d => { nameCount[d.n] = (nameCount[d.n]||0) + 1; });
+      const sortedNames = Object.entries(nameCount).sort((a,b)=>b[1]-a[1]);
+      let detailHtml = '<div style="margin-bottom:10px"><span class="chip" style="cursor:pointer;font-size:11px" onclick="drillErrorMonth(\''+m+'\')">← 返回差错类型分布</span></div>';
+      detailHtml += '<table><thead><tr><th>姓名</th><th>扣分数量</th></tr></thead><tbody>';
+      detailHtml += sortedNames.map(([n,c]) => {
+        return '<tr><td>'+escapeHtml(n)+'</td><td style="text-align:center;color:#d63031;font-weight:bold">'+c+'</td></tr>';
+      }).join('');
+      detailHtml += '</tbody></table><div style="margin-top:8px;font-size:11px;color:#636e72">共 '+records.length+' 条记录，涉及 '+sortedNames.length+' 人</div>';
+      document.getElementById('modalTitle').textContent = m + ' · ' + errType + ' · 明细';
+      document.getElementById('modalBody').innerHTML = detailHtml;
+    };
+  });
+}
+
+// ========== OVERVIEW ==========
+function renderOverview() {
+  const data = getFilteredData();
+  // 不再提前 return：趋势图/情绪图/TOP6各有独立数据源，不应因 cs+comp 为空而连坐
+  const total = data.length;
+
+  // 平均质检得分口径：91 + 当前筛选记录"得分"列的算术平均值
+  const avgAdjustment = data.length > 0 ? data.reduce((sum,d)=>sum+(Number(d.s)||0),0) / data.length : 0;
+  const avgQualityScore = BASE + avgAdjustment;
+  const uniquePeople = new Set(data.map(d=>d.n).filter(Boolean)).size;
+
+  // Count bonus/penalty records
+  const bonusCnt = data.filter(d => d.s > 0).length;
+  const deductCnt = data.filter(d => d.s < 0).length;
+  // 不满意专项 ss<100 count，跟随全局月份筛选
+  let unsatKpiData = allData.unsat || [];
+  if(filterState.months.length > 0 && !filterState.months.includes('all')) {
+    unsatKpiData = unsatKpiData.filter(d => filterState.months.includes(d.m));
+  }
+  const unsatLowCnt = unsatKpiData.filter(d => d.ss < 100).length;
+
+  // AI情绪占比KPI，跟随全局月份筛选 + 年度筛选
+  let aiKpiData = allData.ai || [];
+  if(filterState.months.length > 0 && !filterState.months.includes('all')) {
+    aiKpiData = aiKpiData.filter(d => filterState.months.includes(d.m));
+  }
+  const trendYearOv = document.getElementById('trendYearOverview').value;
+  if(trendYearOv) aiKpiData = aiKpiData.filter(d => d.m && d.m.startsWith(trendYearOv));
+
+  const aiEmotionTotal = aiKpiData.filter(d=>['变好','稳定','变差'].includes(d.etrend)).length;
+  const pctBetter = aiEmotionTotal ? aiKpiData.filter(d=>d.etrend==='变好').length / aiEmotionTotal * 100 : 0;
+  const pctStable = aiEmotionTotal ? aiKpiData.filter(d=>d.etrend==='稳定').length / aiEmotionTotal * 100 : 0;
+  const pctWorse = aiEmotionTotal ? aiKpiData.filter(d=>d.etrend==='变差').length / aiEmotionTotal * 100 : 0;
+
+  // AI情绪占比环比（取当前筛选最新月份的上一个月，保持年度筛选一致）
+  const allAiMonths = [...new Set(allData.ai.map(d=>d.m).filter(Boolean))].sort();
+  const selectedMonths = (filterState.months.length===0 || filterState.months.includes('all'))
+    ? allAiMonths
+    : filterState.months.filter(m=>allAiMonths.includes(m)).sort();
+  const curMonth = selectedMonths[selectedMonths.length-1] || '';
+  const curIdx = allAiMonths.indexOf(curMonth);
+  const prevMonth = curIdx > 0 ? allAiMonths[curIdx-1] : '';
+  let prevAiData = allData.ai || [];
+  if(prevMonth) prevAiData = prevAiData.filter(d => d.m === prevMonth);
+  if(trendYearOv) prevAiData = prevAiData.filter(d => d.m && d.m.startsWith(trendYearOv));
+  const prevEmotionTotal = prevAiData.filter(d=>['变好','稳定','变差'].includes(d.etrend)).length;
+  const prevPctBetter = prevEmotionTotal ? prevAiData.filter(d=>d.etrend==='变好').length/prevEmotionTotal*100 : 0;
+  const prevPctStable = prevEmotionTotal ? prevAiData.filter(d=>d.etrend==='稳定').length/prevEmotionTotal*100 : 0;
+  const prevPctWorse = prevEmotionTotal ? prevAiData.filter(d=>d.etrend==='变差').length/prevEmotionTotal*100 : 0;
+  const diffBetter = pctBetter - prevPctBetter;
+  const diffStable = pctStable - prevPctStable;
+  const diffWorse = pctWorse - prevPctWorse;
+  function fmtDiff(v, upColor, downColor) {
+    if(!prevMonth) return '无上月数据';
+    if(Math.abs(v) < 0.05) return '<span style="color:#636e72">→ 0.0pp</span>';
+    const arrow = v > 0 ? '↑' : '↓';
+    const color = v > 0 ? upColor : downColor;
+    return `<span style="color:${color}">${arrow} ${Math.abs(v).toFixed(1)}pp</span>`;
+  }
+
+  document.getElementById('kpiRow').innerHTML =
+    `<div class="kpi-card"><div class="label">加分总量</div><div class="value" style="color:#00b894">${bonusCnt}</div><div class="sub">加分记录数 (s&gt;0)</div></div>
+     <div class="kpi-card"><div class="label">扣分总量</div><div class="value" style="color:#d63031">${deductCnt}</div><div class="sub">扣分记录数 (s&lt;0)</div></div>
+     <div class="kpi-card"><div class="label">平均质检得分</div><div class="value">${avgQualityScore.toFixed(2)}</div><div class="sub">91 + 平均加减分｜${uniquePeople}人</div></div>
+     <div class="kpi-card"><div class="label">不满意专项分<100</div><div class="value" style="color:#d63031">${unsatLowCnt}</div><div class="sub">当前筛选月份</div></div>
+     <div class="kpi-card"><div class="label">AI情绪变好占比</div><div class="value" style="color:#00b894">${pctBetter.toFixed(1)}%</div><div class="sub">环比 ${fmtDiff(diffBetter,'#00b894','#d63031')}</div></div>
+     <div class="kpi-card"><div class="label">AI情绪稳定占比</div><div class="value" style="color:#fdcb6e">${pctStable.toFixed(1)}%</div><div class="sub">环比 ${fmtDiff(diffStable,'#636e72','#636e72')}</div></div>
+     <div class="kpi-card"><div class="label">AI情绪变差占比</div><div class="value" style="color:#d63031">${pctWorse.toFixed(1)}%</div><div class="sub">环比 ${fmtDiff(diffWorse,'#d63031','#00b894')}</div></div>`;
+
+  // 趋势图：跳过月份筛选，使用年度筛选
+  let trendData = getBaseData(); // 不含月份筛选
+  if(filterState.type!=='all') trendData = trendData.filter(d => d.type===filterState.type);
+  if(filterState.group) trendData = trendData.filter(d => resolveGroup(d) === filterState.group);
+  const trendYear = document.getElementById('trendYearOverview').value;
+  if(trendYear) trendData = trendData.filter(d => d.m.startsWith(trendYear));
+  const md = aggregateByMonth(trendData);
+  const ml = md.map(d=>d.m);
+  // 月度加扣分量 = 只算有加扣分的记录数（s != 0），同时计算占比
+  const adjCountByMonth = {};
+  ml.forEach(m => { adjCountByMonth[m] = 0; });
+  const deductCountByMonth = {};
+  ml.forEach(m => { deductCountByMonth[m] = 0; });
+  trendData.forEach(d => {
+    if(d.s && d.s !== 0) adjCountByMonth[d.m] = (adjCountByMonth[d.m]||0) + 1;
+  });
+  // 差错分子：合并差错池（含企微专项异常记录，按会话ID去重），与 trendData 同一筛选口径
+  const poolForTrend = getErrPool().filter(function(d){
+    if(filterState.type!=='all' && d.src!==filterState.type) return false;
+    if(filterState.group && resolveGroup(d)!==filterState.group) return false;
+    if(trendYear && d.m && !d.m.startsWith(trendYear)) return false;
+    return true;
+  });
+  poolForTrend.forEach(d => { if(d.m) deductCountByMonth[d.m] = (deductCountByMonth[d.m]||0) + 1; });
+  // 抽检总量分母：从“抽检总量”Sheet汇总；岗位/组筛选时仅统计对应人员
+  const totalByMonth = {};
+  const allowedNamesForTotal = new Set(trendData.map(d=>d.n).filter(Boolean));
+  if(allData.totalCount) {
+    Object.entries(allData.totalCount).forEach(([key, cnt]) => {
+      const parts = key.split('|');
+      const name = parts[0];
+      const m = parts[1];
+      if(ml.includes(m) && (!filterState.type || filterState.type==='all' || allowedNamesForTotal.has(name)) && (!filterState.group || allowedNamesForTotal.has(name))) {
+        totalByMonth[m] = (totalByMonth[m]||0) + cnt;
+      }
+    });
+  }
+  // 兜底：如果 totalCount 没该月数据，用现有 trendData 的记录数
+  ml.forEach(m => {
+    if(!totalByMonth[m]) {
+      totalByMonth[m] = (md.find(d=>d.m===m)||{count:0}).count;
+    }
+  });
+  const errRateData = ml.map(m => {
+    const total = totalByMonth[m] || 0;
+    const deduct = deductCountByMonth[m] || 0;
+    return total > 0 ? (deduct / total * 100) : 0;
+  });
+  makeChart('chartTrendCount','bar',{
+    labels:ml,datasets:[
+      { type:'bar', order:1, label:'差错率(%)', data:errRateData,
+        backgroundColor:'rgba(214,48,49,0.35)', borderColor:'#d63031', borderWidth:1, borderRadius:3 },
+      { type:'line', order:2, label:'差错率(%)', data:errRateData,
+        borderColor:'#d63031', backgroundColor:'transparent', pointRadius:5, fill:false, tension:.3,
+        datalabels:{ display:false } }
+    ]
+  },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',formatter:function(v,ctx){
+      const m = ml[ctx.dataIndex];
+      const total = totalByMonth[m] || 0;
+      const deduct = deductCountByMonth[m] || 0;
+      return deduct + '/' + total + ' (' + v.toFixed(1) + '%)';
+    }}},
+    tooltip:{callbacks:{label:function(ctx){
+      const m = ctx.label;
+      const total = totalByMonth[m] || 0;
+      const deduct = deductCountByMonth[m] || 0;
+      return '扣分: ' + deduct + ' / 总抽检: ' + total + ' (' + ctx.parsed.y.toFixed(1) + '%)';
+    }}},
+    scales:{y:{title:{display:true,text:'%'},beginAtZero:true}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx = el[0].index;
+        const m = ml[idx];
+        if(m) drillErrorMonth(m);
+      }
+    }});
+
+  // 月度平均质检得分 = 91 + 当月原始记录得分平均值
+  makeChart('chartTrendScore','line',{
+    labels:ml,datasets:[{label:'平均质检得分',data:md.map(d=>d.avgScore),borderColor:'#0984e3',tension:.3,fill:false,pointRadius:4}]
+  },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',formatter:v=>v.toFixed(2)}},scales:{y:{min:85,max:93}}});
+
+  // AI情绪变化分布（来自ai抽检数据的「用户情绪_趋势」字段）- 饼状图
+  const emotionTotal = {变好:0, 稳定:0, 变差:0};
+  const aiDataAll = allData.ai || [];
+  // 按全局月份筛选 + 趋势年份筛选
+  let aiData = aiDataAll;
+  if(filterState.months && filterState.months.length>0 && !filterState.months.includes('all')) {
+    aiData = aiData.filter(d => filterState.months.includes(d.m));
+  }
+  // trendYearOv 已在上方 KPI 计算时声明，直接复用
+  if(trendYearOv) aiData = aiData.filter(d => d.m && d.m.startsWith(trendYearOv));
+  aiData.forEach(d => {
+    if(d.etrend === '变好') emotionTotal['变好']++;
+    else if(d.etrend === '变差') emotionTotal['变差']++;
+    else if(d.etrend === '稳定') emotionTotal['稳定']++;
+    // 空值或其他值不计入
+  });
+  const eTotal = emotionTotal['变好'] + emotionTotal['稳定'] + emotionTotal['变差'];
+  makeChart('chartPerception','doughnut',{
+    labels:['变好','稳定','变差'],
+    datasets:[{data:[emotionTotal['变好'],emotionTotal['稳定'],emotionTotal['变差']],
+      backgroundColor:['#00b894','#fdcb6e','#d63031']}]
+  },{plugins:{datalabels:{color:'#fff',font:{weight:'bold',size:13},
+    formatter:(v,t)=>v>0?((v/eTotal*100).toFixed(1))+'%':''}}});
+
+  // 不满意评价原因分布TOP6（不满意专项“不满意中分类”），跟随全局月份筛选
+  let overviewUnsat = allData.unsat || [];
+  if(filterState.months.length > 0 && !filterState.months.includes('all')) {
+    overviewUnsat = overviewUnsat.filter(d => filterState.months.includes(d.m));
+  }
+  const rlCount = {};
+  overviewUnsat.forEach(d => { if(d.rl) rlCount[d.rl] = (rlCount[d.rl]||0) + 1; });
+  const topRL = Object.entries(rlCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const rlLabels = topRL.map(d=>d[0]);
+  const rlValues = topRL.map(d=>d[1]);
+  const rlTotal = Object.values(rlCount).reduce((a,b)=>a+b, 0);
+  makeChart('chartCategory','doughnut',{
+    labels:rlLabels, datasets:[{data:rlValues, backgroundColor:['#e17055','#0984e3','#00b894','#fdcb6e','#6c5ce7','#d63031']}]
+  },{radius:'60%',cutout:'55%',
+    plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:8,padding:15}},
+    datalabels:{color:'#2d3436',font:{weight:'bold',size:10},anchor:'end',align:'end',
+    formatter:(v,t)=>v+'('+((v/rlTotal*100).toFixed(1))+'%)',
+    offset:8, clamp:true}},
+    layout:{padding:{right:90,top:15,bottom:15,left:15}}});
+
+  // 月度加/扣分数量（堆叠柱状图：加分=绿，扣分=红，点击下钻）
+  const bonusCntByMonth = {};
+  ml.forEach(m => { bonusCntByMonth[m] = {pos:0, neg:0}; });
+  trendData.forEach(d => {
+    if(!d.s || d.s === 0) return;
+    if(d.s > 0) bonusCntByMonth[d.m].pos++;
+    if(d.s < 0) bonusCntByMonth[d.m].neg++;
+  });
+  makeChart('chartBonusDetail','bar',{
+    labels:ml,
+    datasets:[
+      {label:'加分', data:ml.map(m=>bonusCntByMonth[m].pos), backgroundColor:'#00b894', borderRadius:3},
+      {label:'扣分', data:ml.map(m=>bonusCntByMonth[m].neg), backgroundColor:'#d63031', borderRadius:3}
+    ]
+  },{plugins:{legend:{position:'bottom',labels:{font:{size:9}}},
+      datalabels:{display:function(ctx){return ctx.dataset.data[ctx.dataIndex]>0},color:'#fff',font:{weight:'bold',size:10},anchor:'center',formatter:v=>v}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx = el[0].index;
+        const m = ml[idx];
+        if(!m) return;
+        // 找出该月所有人员的加分和扣分次数及分值
+        const monthRecords = trendData.filter(d => d.m === m && d.s !== 0);
+        const agentMap = {};
+        monthRecords.forEach(d => {
+          if(!agentMap[d.n]) agentMap[d.n] = {posCnt:0, negCnt:0, posSum:0, negSum:0};
+          if(d.s > 0) { agentMap[d.n].posCnt++; agentMap[d.n].posSum += d.s; }
+          if(d.s < 0) { agentMap[d.n].negCnt++; agentMap[d.n].negSum += d.s; }
+        });
+        showBonusModal(m, agentMap);
+      }
+    }});
+
+  // 商品专项分析（来自ai抽检数据，全员）
+  // 初始化月份和情绪趋势下拉
+  const aiProdMSel = document.getElementById('aiProdMonth');
+  if(aiProdMSel.options.length <= 1) {
+    const aiMonths = [...new Set(allData.ai.map(d=>d.m).filter(Boolean))].sort();
+    aiProdMSel.innerHTML = '<option value="">全部</option>' + aiMonths.map(m=>`<option value="${m}">${m}</option>`).join('');
+    aiProdMSel.value = '';
+    aiProdMSel.onchange = applyAIProduct;
+  }
+  const aiProdESel = document.getElementById('aiProdEmotion');
+  aiProdESel.onchange = applyAIProduct;
+  applyAIProduct();
+}
+
+function applyAIProduct() {
+  let aiData = allData.ai || [];
+  const selM = document.getElementById('aiProdMonth').value;
+  const selE = document.getElementById('aiProdEmotion').value;
+  if(selM) aiData = aiData.filter(d => d.m === selM);
+  if(selE) aiData = aiData.filter(d => d.etrend === selE);
+  // 按商品名称( product_name )聚合TOP10，点击可见该商品的AI问题分类TOP6
+  const prodMap = {};
+  aiData.forEach(d => {
+    const key = (d.product_name || '').trim();
+    if(!key || key === '未填' || key === 'undefined' || key === 'null') return;
+    if(!prodMap[key]) prodMap[key] = {cnt:0, aiCats:{}};
+    prodMap[key].cnt++;
+    if(d.ai_cat) prodMap[key].aiCats[d.ai_cat] = (prodMap[key].aiCats[d.ai_cat]||0) + 1;
+  });
+  const top = Object.entries(prodMap).sort((a,b)=>b[1].cnt-a[1].cnt).slice(0,10);
+  const labels = top.map(d=>d[0]);
+  const values = top.map(d=>d[1].cnt);
+  const maxV = Math.max(...values, 1);
+  makeChart('chartAIProduct','bar',{
+    labels:labels, datasets:[{label:'咨询次数',data:values, backgroundColor:'#6c5ce7', borderRadius:3}]
+  },{indexAxis:'y',plugins:{legend:{display:false},
+    datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'start',offset:-4,formatter:v=>v}},
+    scales:{x:{beginAtZero:true,max:maxV+1},y:{ticks:{font:{size:9},autoSkip:false},afterFit:function(scale){scale.width=160;}}},
+    layout:{padding:{left:20,right:30}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx=el[0].index;
+        const prodName=labels[idx];
+        const aiCats=top[idx][1].aiCats;
+        const sorted=Object.entries(aiCats).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+        var html='<table><thead><tr><th>AI问题分类</th><th>次数</th></tr></thead><tbody>';
+        sorted.forEach(function(e){html+='<tr><td>'+e[0]+'</td><td style=\"text-align:center;font-weight:bold;color:#6c5ce7\">'+e[1]+'</td></tr>';});
+        html+='</tbody></table>';
+        document.getElementById('modalTitle').textContent=prodName+' · AI问题分类TOP6';
+        document.getElementById('modalBody').innerHTML=html;
+        document.getElementById('errorModal').classList.add('show');
+      }
+    }});
+}
+
+// ========== PEOPLE ==========
+
+
+function renderPeople() {
+  const data = getFilteredData();
+
+  // 按人计算质检得分 = 91 + (个人加分) - (个人扣分)
+  const agentScores = {};
+  data.forEach(d => {
+    if(!agentScores[d.n]) agentScores[d.n] = { sumAdj: 0, count: 0, nonzeroCount: 0, bonuses: 0, deductions: 0 };
+    agentScores[d.n].sumAdj += d.s;
+    agentScores[d.n].count++;
+    if(d.s !== 0) agentScores[d.n].nonzeroCount++;
+    if(d.s>0) agentScores[d.n].bonuses += d.s;
+    if(d.s<0) agentScores[d.n].deductions += d.s;
+  });
+  const rankData = Object.entries(agentScores).map(([n,v]) => ({
+    n,
+    compScore: BASE + v.sumAdj,
+    count: v.count, nonzeroCount: v.nonzeroCount,
+    sumAdj: v.sumAdj, bonuses: v.bonuses, deductions: v.deductions
+  })).sort((a,b)=>b.compScore - a.compScore);
+
+  // 动态计算 x 轴范围（让所有分数都可见）
+  const minScore = Math.min(...rankData.map(d=>d.compScore));
+  const maxScore = Math.max(...rankData.map(d=>d.compScore));
+  const xMin = Math.floor(Math.min(minScore, BASE) - 1);
+  const xMax = Math.ceil(Math.max(maxScore, BASE) + 1);
+
+  makeChart('chartScoreRank','bar',{
+    labels:rankData.map(d=>d.n),
+    datasets:[{label:'综合质检得分',data:rankData.map(d=>d.compScore),
+      backgroundColor:rankData.map(d=>d.compScore>=BASE?'#00b894':'#d63031'),borderRadius:3}]
+  },{indexAxis:'y',scales:{x:{min:xMin,max:xMax},y:{ticks:{font:{size:9},autoSkip:false},afterFit:function(scale){scale.width=70;}}},
+    plugins:{datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'start',offset:-4,formatter:v=>v.toFixed(2)},
+      tooltip:{callbacks:{afterLabel:function(ctx){
+        const d=rankData[ctx.dataIndex];
+        return '扣分: '+Math.abs(d.deductions).toFixed(2)+' | 加分: +'+(d.bonuses).toFixed(2)+' | 有效抽检: '+d.nonzeroCount+'次';
+      }}}},
+    // Increase margin for long labels
+    layout:{padding:{left:20,right:30}}});
+
+
+  // 各组质检得分 = 91 + (组内加减分) / 小组人数
+  const grpScoreAgg = {};
+  const grpPeopleCount = {};
+  data.forEach(d => {
+    const g = resolveGroup(d);
+    if(!isValidGroup(g)) return;
+    if(!grpScoreAgg[g]) grpScoreAgg[g] = {sumAdj:0,count:0,nonzeroCount:0,people:new Set()};
+    grpScoreAgg[g].sumAdj += Number(d.s) || 0;
+    grpScoreAgg[g].count++;
+    if(d.s !== 0) grpScoreAgg[g].nonzeroCount++;
+    grpScoreAgg[g].people.add(d.n);
+  });
+  const gl = Object.keys(grpScoreAgg).sort();
+  const gv = gl.map(g => BASE + (grpScoreAgg[g].people.size ? grpScoreAgg[g].sumAdj / grpScoreAgg[g].people.size : 0));
+  if(gl.length > 0) {
+    // 动态计算 y 轴范围
+    const gMin = Math.min(...gv);
+    const gMax = Math.max(...gv);
+    const yMin = Math.floor(Math.min(gMin, BASE) - 1);
+    const yMax = Math.ceil(Math.max(gMax, BASE) + 1);
+    makeChart('chartGroupScore','bar',{
+      labels:gl,datasets:[{label:'平均质检得分',data:gv,backgroundColor:BASE_COLORS.slice(0,gl.length),borderRadius:3}]
+    },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',formatter:v=>v.toFixed(1)}},
+      scales:{y:{min:yMin,max:yMax}},
+      layout:{padding:{left:30,right:30}}});
+  }
+
+  // Agent trend with time filter (merged with group comparison)
+  initTrendFilter(rankData);
+  applyTrendChart();
+  // Detail table
+  renderDetailTable(data);
+  // 组内人员得分分布
+  renderGroupDist(data);
+  // AI情绪变差人员分布
+  renderAIEmotionAgent();
+  // AI情绪日走向（最新一周）
+  renderAIEmotionTrend();
+}
+
+// 组内人员得分分布（分组横向堆叠柱）
+function renderGroupDist(data) {
+  const sel = document.getElementById('groupDistSelect');
+  // 使用统一小组解析，过滤无效小组
+  const allGrps = [...new Set(data.map(d=>resolveGroup(d)).filter(isValidGroup))].sort();
+  if(allGrps.length === 0) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="__ALL__">全部</option>' + allGrps.map(g => `<option value="${g}"${g===prev?' selected':''}>${g}</option>`).join('');
+  sel.onchange = function(){ const at = document.querySelector('.tab.active'); if(at) switchTab(at.dataset.tab); };
+  const cur = sel.value === '__ALL__' ? '__ALL__' : (prev || allGrps[0]);
+
+  // 计算每个分组内每个人的得分
+  const groupsToShow = cur === '__ALL__' ? allGrps : [cur];
+  const groupAgentScores = {}; // group -> {name:{sumAdj,count}}
+  data.forEach(d => {
+    const g = resolveGroup(d);
+    if(!groupsToShow.includes(g)) return;
+    if(!groupAgentScores[g]) groupAgentScores[g] = {};
+    if(!groupAgentScores[g][d.n]) groupAgentScores[g][d.n] = {sumAdj:0, count:0};
+    groupAgentScores[g][d.n].sumAdj += d.s;
+    groupAgentScores[g][d.n].count++;
+  });
+
+  const labels = [];
+  const aboveData = [];
+  const belowData = [];
+  const groupDetails = {}; // 用于点击下钻
+  groupsToShow.forEach(g => {
+    const as = groupAgentScores[g] || {};
+    const scores = Object.entries(as).map(([n, v]) => ({n, sumAdj:v.sumAdj, score:BASE + v.sumAdj}));
+    const above = scores.filter(x => x.score >= BASE);
+    const below = scores.filter(x => x.score < BASE);
+    labels.push(g + ' (' + scores.length + '人)');
+    aboveData.push(above.length);
+    belowData.push(below.length);
+    groupDetails[g] = {above: above.sort((a,b)=>b.score-a.score), below: below.sort((a,b)=>a.score-b.score), total:scores.length};
+  });
+
+  if(labels.length === 0) return;
+
+  makeChart('chartGroupDist','bar',{
+    labels: labels,
+    datasets:[
+      {label:'91分以上', data:aboveData, backgroundColor:'#00b894', borderRadius:3, stack:'a'},
+      {label:'91分以下', data:belowData, backgroundColor:'#d63031', borderRadius:3, stack:'a'}
+    ]
+  },{
+    indexAxis:'y',
+    scales:{x:{stacked:true,beginAtZero:true,title:{display:true,text:'人数'}}, y:{stacked:true}},
+    plugins:{legend:{position:'bottom',labels:{font:{size:9}}},
+      datalabels:{color:'#fff',font:{weight:'bold',size:11},anchor:'center',formatter:v=>v>0?v:''}},
+    onClick:function(e,el){
+      if(!el || el.length===0) return;
+      const idx = el[0].index;
+      const g = groupsToShow[idx];
+      const det = groupDetails[g];
+      function buildRows(arr){
+        if(arr.length===0) return '<tr><td colspan="3" style="text-align:center;color:#b2bec3">无</td></tr>';
+        return arr.map(function(x){
+          const s=x.sumAdj>=0?'+':'';
+          return '<tr><td>'+x.n+'</td><td style="text-align:right;color:'+(x.sumAdj>=0?'#00b894':'#d63031')+';font-weight:bold">'+s+x.sumAdj.toFixed(2)+'</td><td style="text-align:right;font-weight:bold">'+x.score.toFixed(2)+'</td></tr>';
+        }).join('');
+      }
+      var html='<div style="font-size:12px;color:#636e72;margin-bottom:10px">基准分: <b style="color:#0984e3">91.00</b> · 共 '+det.total+' 人</div>'+
+        '<div style="display:flex;gap:14px">'+
+          '<div style="flex:1"><h4 style="color:#00b894;margin:0 0 6px">91分以上 '+det.above.length+' 人</h4>'+
+            '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="text-align:left">姓名</th><th>调整分</th><th>得分</th></tr></thead><tbody>'+buildRows(det.above)+'</tbody></table></div>'+
+          '<div style="flex:1"><h4 style="color:#d63031;margin:0 0 6px">91分以下 '+det.below.length+' 人</h4>'+
+            '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="text-align:left">姓名</th><th>调整分</th><th>得分</th></tr></thead><tbody>'+buildRows(det.below)+'</tbody></table></div>'+
+        '</div>';
+      document.getElementById('modalTitle').textContent = g+' · 人员得分明细';
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('errorModal').classList.add('show');
+    }});
+}
+
+// AI情绪变化承接人员分布（来自ai抽检数据）
+function renderAIEmotionAgent() {
+  const monthSel = document.getElementById('aiEmoMonth');
+  const countEl = document.getElementById('aiEmoCount');
+  const wrap = document.getElementById('wrapAIEmotionAgent');
+  const aiAll = allData.ai || [];
+  const aiMonths = [...new Set(aiAll.map(d=>d.m).filter(Boolean))].sort();
+  // 初始化月份下拉（仅首次），从新到旧排列，默认最新月份
+  if(!monthSel.dataset.inited) {
+    monthSel.innerHTML = '<option value="">全部</option>' + aiMonths.slice().reverse().map(m => `<option value="${m}">${m}</option>`).join('');
+    monthSel.dataset.inited = '1';
+    monthSel.onchange = renderAIEmotionAgent;
+  }
+  if(!monthSel.value && aiMonths.length > 0) monthSel.value = aiMonths[aiMonths.length-1];
+
+  let aiData = aiAll;
+  if(monthSel.value) aiData = aiData.filter(d => d.m === monthSel.value);
+
+  if(countEl) countEl.textContent = '共 ' + aiData.length + ' 条对话';
+
+  // 销毁旧图表
+  if(charts['chartAIEmotionAgent']) { try{charts['chartAIEmotionAgent'].destroy();}catch(e){} delete charts['chartAIEmotionAgent']; }
+  if(!wrap) return;
+
+  // 空状态处理
+  if(aiData.length === 0) {
+    wrap.innerHTML = '<canvas id="chartAIEmotionAgent"></canvas>';
+    wrap.style.overflowX = 'hidden';
+    const ctx = document.getElementById('chartAIEmotionAgent');
+    if(ctx) {
+      const parent = ctx.parentNode;
+      let empty = parent.querySelector('.empty-hint');
+      if(!empty) {
+        empty = document.createElement('div');
+        empty.className = 'empty-hint';
+        empty.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#b2bec3;font-size:13px;text-align:center';
+        parent.style.position = 'relative';
+        parent.appendChild(empty);
+      }
+      empty.textContent = '当前筛选条件下暂无数据';
+    }
+    return;
+  }
+
+  // 按人员聚合情绪分布（全部人员）
+  const agentMap = {};
+  aiData.forEach(d => {
+    if(!agentMap[d.n]) agentMap[d.n] = {total:0, better:0, stable:0, worse:0, products:{}};
+    agentMap[d.n].total++;
+    if(d.etrend === '变好') agentMap[d.n].better++;
+    else if(d.etrend === '稳定') agentMap[d.n].stable++;
+    else if(d.etrend === '变差') agentMap[d.n].worse++;
+    if(d.product_name) agentMap[d.n].products[d.product_name] = (agentMap[d.n].products[d.product_name]||0) + 1;
+  });
+
+  // 展示全部人员，按总接待量降序
+  const sorted = Object.entries(agentMap)
+    .filter(([n,v]) => v.total > 0)
+    .sort((a,b)=>b[1].total-a[1].total);
+  const labels = sorted.map(d=>d[0]);
+  const betterData = labels.map(n => agentMap[n].total ? agentMap[n].better / agentMap[n].total * 100 : 0);
+  const stableData = labels.map(n => agentMap[n].total ? agentMap[n].stable / agentMap[n].total * 100 : 0);
+  const worseData  = labels.map(n => agentMap[n].total ? agentMap[n].worse  / agentMap[n].total * 100 : 0);
+
+  // 为全部人员创建横向可滚动画布容器
+  const widthPerAgent = 32;
+  const desiredWidth = Math.max(wrap.clientWidth, labels.length * widthPerAgent);
+  wrap.innerHTML = '<div style="width:'+desiredWidth+'px;height:240px;"><canvas id="chartAIEmotionAgent" style="width:100%;height:100%;display:block;"></canvas></div>';
+  wrap.style.overflowX = desiredWidth > wrap.clientWidth ? 'auto' : 'hidden';
+  wrap.style.overflowY = 'hidden';
+
+  makeChart('chartAIEmotionAgent','bar',{
+    labels: labels,
+    datasets:[
+      {label:'变好', data:betterData, backgroundColor:'#00b894', borderRadius:2, stack:'em'},
+      {label:'稳定', data:stableData, backgroundColor:'#fdcb6e', borderRadius:2, stack:'em'},
+      {label:'变差', data:worseData,  backgroundColor:'#d63031', borderRadius:2, stack:'em'}
+    ]
+  },{
+    scales:{
+      x:{stacked:true, ticks:{autoSkip:false, maxRotation:45, minRotation:45, font:{size:9}}},
+      y:{stacked:true, max:100, beginAtZero:true, ticks:{callback:v=>v+'%'}, title:{display:true,text:'占比'}}
+    },
+    plugins:{
+      legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}},
+      tooltip:{callbacks:{label:function(ctx){
+        const n = ctx.label;
+        const v = agentMap[n];
+        const key = ctx.dataset.label;
+        const raw = key==='变好'?v.better:(key==='稳定'?v.stable:v.worse);
+        return key + ': ' + raw + '条 (' + ctx.parsed.y.toFixed(2) + '%)';
+      }}},
+      datalabels:{color:'#fff',font:{weight:'bold',size:8},anchor:'center',align:'center',
+        formatter:function(v,ctx){ return v >= 6 ? v.toFixed(1)+'%' : ''; },
+        textStrokeColor:'rgba(0,0,0,0.3)', textStrokeWidth:2 }
+    },
+    onClick:function(e,el){
+      if(el && el.length>0){
+        const idx = el[0].index;
+        const agentName = labels[idx];
+        const v = agentMap[agentName];
+        const prods = Object.entries(v.products).sort((a,b)=>b[1]-a[1]).slice(0,6);
+        const html = '<div style="font-size:12px;color:#636e72;margin-bottom:10px">' +
+          '总接待量: <b>' + v.total + '</b> 条 · ' +
+          '变好: <b style="color:#00b894">' + (v.better/v.total*100).toFixed(2) + '%</b> · ' +
+          '稳定: <b style="color:#fdcb6e">' + (v.stable/v.total*100).toFixed(2) + '%</b> · ' +
+          '变差: <b style="color:#d63031">' + (v.worse/v.total*100).toFixed(2) + '%</b></div>' +
+          '<table><thead><tr><th>涉及商品</th><th>次数</th></tr></thead><tbody>' +
+          prods.map(function(p){return '<tr><td>'+p[0]+'</td><td style=\"text-align:center;font-weight:bold;color:#0984e3\">'+p[1]+'</td></tr>';}).join('') +
+          '</tbody></table>';
+        document.getElementById('modalTitle').textContent = agentName + ' · AI情绪变化涉及商品TOP6';
+        document.getElementById('modalBody').innerHTML = html;
+        document.getElementById('errorModal').classList.add('show');
+      }
+    }});
+}
+
+// AI情绪日走向（最新一周）：按天统计 变好/稳定/变差 对话数，堆叠柱状图
+function renderAIEmotionTrend() {
+  const aiAll = allData.ai || [];
+  const withDate = aiAll.filter(d => d.d);
+  const container = document.getElementById('chartAIEmotionTrend');
+  if(!container) return;
+  if(charts['chartAIEmotionTrend']) { try{charts['chartAIEmotionTrend'].destroy();}catch(e){} delete charts['chartAIEmotionTrend']; }
+  if(withDate.length === 0) {
+    container.parentNode.innerHTML = '<canvas id="chartAIEmotionTrend"></canvas>';
+    const parent = container.parentNode;
+    if(!parent.querySelector('.empty-hint')) {
+      const e = document.createElement('div');
+      e.className = 'empty-hint';
+      e.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#b2bec3;font-size:13px;text-align:center';
+      parent.style.position = 'relative';
+      parent.appendChild(e);
+    }
+    parent.querySelector('.empty-hint').textContent = 'AI数据无日期字段，请重新解析后发布';
+    return;
+  }
+  // 周筛选：0=最新一周 1=上周 2=上上周（绑定一次，变化时重渲染）
+  const weekSel = document.getElementById('aiWeekSelect');
+  if(weekSel && !weekSel.dataset.inited) {
+    weekSel.dataset.inited = '1';
+    weekSel.onchange = renderAIEmotionTrend;
+  }
+  const offset = weekSel ? (parseInt(weekSel.value, 10) || 0) : 0;
+
+  // 最新日期（本地时区安全格式化）
+  const fmt = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const dates = withDate.map(d => d.d).sort();
+  const latestDate = new Date(dates[dates.length-1] + 'T00:00:00'); // 视作本地时间
+  // 窗口结束日 = 最新日 - offset*7 天；再往前推 6 天，共 7 天
+  const endDt = new Date(latestDate);
+  endDt.setDate(endDt.getDate() - offset * 7);
+  const dayList = [];
+  for (let i = 6; i >= 0; i--) {
+    const dt = new Date(endDt);
+    dt.setDate(dt.getDate() - i);
+    dayList.push(fmt(dt));
+  }
+  const startStr = dayList[0];
+  const latest = fmt(endDt);
+  // 按天聚合
+  const agg = {};
+  dayList.forEach(d => agg[d] = {better:0, stable:0, worse:0, total:0});
+  withDate.forEach(d => {
+    if(d.d >= startStr && d.d <= latest) {
+      agg[d.d].total++;
+      if(d.etrend === '变好') agg[d.d].better++;
+      else if(d.etrend === '稳定') agg[d.d].stable++;
+      else if(d.etrend === '变差') agg[d.d].worse++;
+    }
+  });
+  const labels = dayList.map(d => d.slice(5)); // MM-DD
+  const betterData = dayList.map(d => agg[d].better);
+  const stableData = dayList.map(d => agg[d].stable);
+  const worseData  = dayList.map(d => agg[d].worse);
+  const totalData  = dayList.map(d => agg[d].total);
+
+  makeChart('chartAIEmotionTrend','bar',{
+    labels: labels,
+    datasets:[
+      {label:'变好', data:betterData, backgroundColor:'#00b894', borderRadius:2, stack:'trend'},
+      {label:'稳定', data:stableData, backgroundColor:'#fdcb6e', borderRadius:2, stack:'trend'},
+      {label:'变差', data:worseData,  backgroundColor:'#d63031', borderRadius:2, stack:'trend'}
+    ]
+  },{
+    scales:{
+      x:{stacked:true, title:{display:true,text:'日期 (MM-DD)'}},
+      y:{stacked:true, beginAtZero:true, title:{display:true,text:'对话数'}, ticks:{precision:0}}
+    },
+    plugins:{
+      legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}},
+      datalabels:{color:'#fff',font:{weight:'bold',size:9},anchor:'center',align:'center',
+        formatter:function(v){return v>0?v:'';}},
+      tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+': '+ctx.parsed.y+' 条';},
+        footer:function(items){const i=items[0].dataIndex;return '当日总计: '+totalData[i]+' 条';}}}
+    }
+  });
+}
+
+function initTrendFilter(rankData) {
+  const ySel = document.getElementById('trendYear');
+  const mSel = document.getElementById('trendMonth');
+  const aSel = document.getElementById('trendAgent');
+  const allMonths = [...new Set(allData.cs.map(d=>d.m).concat(allData.comp.map(d=>d.m)))].sort();
+  const years = [...new Set(allMonths.filter(m=>m).map(m=>m.split('/')[0]))].sort().filter(y=>y);
+  ySel.innerHTML = '<option value="">全部年份</option>'+years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  ySel.value = years[years.length-1];
+  mSel.innerHTML = '<option value="">全年</option>'+Array.from({length:12},(_,i)=>`<option value="${String(i+1).padStart(2,'0')}">${i+1}月</option>`).join('');
+  const agents = rankData.map(d=>d.n);
+  aSel.innerHTML = agents.map(a=>`<option value="${a}">${a}</option>`).join('');
+  aSel.value = filterState.agent || agents[0];
+  ySel.onchange = applyTrendChart;
+  mSel.onchange = applyTrendChart;
+  aSel.onchange = function(){ initCompareTargets(); applyTrendChart(); };
+  initCompareTargets();
+}
+
+function initCompareTargets() {
+  const container = document.getElementById('compareTargetBtns');
+  if(!container) return;
+  let data = getBaseData();
+  if(filterState.type!=='all') data = data.filter(d => d.type===filterState.type);
+  // 使用统一小组解析，过滤无效小组
+  const groups = [...new Set(data.map(d => resolveGroup(d)).filter(isValidGroup))].sort();
+  const agent = document.getElementById('trendAgent').value;
+  // 所属小组以该客服最新月份记录的小组为准
+  const ownGroup = getAgentLatestGroup(agent);
+  // 默认选中：全部客服 + 所属小组；其他小组去重
+  const prevSel = window.__compareSel || ['__ALL__', '__OWN__'];
+  const otherGroups = groups.filter(g => g !== ownGroup);
+  const items = [{key:'__ALL__', label:'全部客服'}];
+  if (isValidGroup(ownGroup)) items.push({key:'__OWN__', label:'所属小组(' + ownGroup + ')'});
+  items.push(...otherGroups.map(g => ({key:g, label:g})));
+  container.innerHTML = items.map(it => {
+    const sel = prevSel.includes(it.key);
+    return `<span class="grp-pill${sel?' active':''}" data-cmp="${it.key}">${it.label}</span>`;
+  }).join('');
+  container.querySelectorAll('.grp-pill').forEach(pill => {
+    pill.onclick = function(){
+      this.classList.toggle('active');
+      window.__compareSel = [...container.querySelectorAll('.grp-pill.active')].map(p => p.dataset.cmp);
+      applyTrendChart();
+    };
+  });
+  window.__compareSel = prevSel.filter(k => items.some(it => it.key === k));
+  if(window.__compareSel.length === 0) window.__compareSel = ['__ALL__'];
+}
+
+function applyTrendChart() {
+  const agent = document.getElementById('trendAgent').value;
+  const year = document.getElementById('trendYear').value;
+  const month = document.getElementById('trendMonth').value;
+  // 用原始数据（忽略全局人员/小组筛选，但保留类型筛选）
+  let data = getBaseData();
+  if(filterState.type!=='all') data = data.filter(d => d.type===filterState.type);
+  // 应用本图表的时间筛选
+  let timeData = data;
+  if(year) timeData = timeData.filter(d => d.m.startsWith(year));
+  if(month && year) timeData = timeData.filter(d => d.m === year+'/'+month);
+
+  // 计算每个人每月得分
+  function personMonthlyScore(src) {
+    const pm = {};
+    src.forEach(d => {
+      if(!pm[d.n]) pm[d.n] = {};
+      if(!pm[d.n][d.m]) pm[d.n][d.m] = {sumAdj:0, count:0};
+      pm[d.n][d.m].sumAdj += d.s;
+      pm[d.n][d.m].count++;
+    });
+    return pm;
+  }
+  const personMonth = personMonthlyScore(timeData);
+  const allMonths = [...new Set(timeData.map(d=>d.m))].sort();
+
+  // 所选客服月度得分
+  const agentScores = allMonths.map(m => {
+    const rec = personMonth[agent] && personMonth[agent][m];
+    return rec ? BASE + rec.sumAdj : null;
+  });
+
+  // 全部客服均值
+  function calcGroupAvg(src, names) {
+    return allMonths.map(m => {
+      let sum = 0, cnt = 0;
+      src.forEach(d => {
+        if(d.m !== m) return;
+        if(names && !names.includes(d.n)) return;
+        sum += d.s;
+        cnt++;
+      });
+      // 按人平均（一人多月也只算一人）
+      const people = new Set(src.filter(d => d.m === m && (!names || names.includes(d.n))).map(d=>d.n));
+      return people.size > 0 ? BASE + sum / people.size : null;
+    });
+  }
+
+  const allAgentAvg = calcGroupAvg(timeData);
+
+  // 获取所属小组：以该客服最新月份记录的小组为准（按月分组，避免用历史月份误标）
+  const ownGroup = getAgentLatestGroup(agent);
+
+  // 各小组均值
+  const groupAvgs = {};
+  const groups = [...new Set(timeData.map(d => resolveGroup(d)).filter(isValidGroup))].sort();
+  groups.forEach(g => {
+    const names = [...new Set(timeData.filter(d => resolveGroup(d) === g).map(d=>d.n))];
+    groupAvgs[g] = calcGroupAvg(timeData, names);
+  });
+
+  // 对比对象按钮状态
+  const cmpSel = window.__compareSel || ['__ALL__'];
+  const cmpMap = {
+    '__ALL__': {label:'全部客服均值', data:allAgentAvg, color:'#b2bec3', dash:[6,4]}
+  };
+  if (isValidGroup(ownGroup)) {
+    cmpMap['__OWN__'] = {label:'所属小组均值('+ownGroup+')', data:groupAvgs[ownGroup]||[], color:'#00b894', dash:[0,0]};
+  }
+  groups.forEach(g => {
+    cmpMap[g] = {label:g+'均值', data:groupAvgs[g]||[], color:BASE_COLORS[groups.indexOf(g) % BASE_COLORS.length], dash:[0,0]};
+  });
+
+  // 先根据所有数值确定坐标轴范围和标签格式（必须在组装数据集前定义 labelFmt）
+  const allSeries = [agentScores, allAgentAvg, ...Object.values(groupAvgs)];
+  const flat = allSeries.flatMap(arr => arr.filter(v => v != null));
+  const tMin = flat.length ? Math.min(...flat) : BASE - 1;
+  const tMax = flat.length ? Math.max(...flat) : BASE + 1;
+  const range = tMax - tMin;
+  let yMin, yMax, step, labelFmt;
+  if(range < 0.1) {
+    yMin = Math.floor((tMin - 0.02) * 100) / 100;
+    yMax = Math.ceil((tMax + 0.02) * 100) / 100;
+    step = 0.02; labelFmt = v=>v.toFixed(2);
+  } else if(range < 0.5) {
+    yMin = Math.floor((tMin - 0.05) * 20) / 20;
+    yMax = Math.ceil((tMax + 0.05) * 20) / 20;
+    step = 0.05; labelFmt = v=>v.toFixed(2);
+  } else if(range < 2) {
+    yMin = Math.floor((tMin - 0.8) * 10) / 10;
+    yMax = Math.ceil((tMax + 0.3) * 10) / 10;
+    step = 0.1; labelFmt = v=>v.toFixed(2);
+  } else {
+    yMin = Math.floor(tMin - 1);
+    yMax = Math.ceil(tMax + 1);
+    step = 1; labelFmt = v=>v.toFixed(1);
+  }
+
+  // 组装数据集：本人得分用柱形，对比对象用折线置顶
+  const datasets = [{
+    type: 'bar', order: 1,
+    label: agent, data: agentScores, borderColor: '#0984e3',
+    backgroundColor: 'rgba(9,132,227,0.55)', borderWidth: 1, borderRadius: 3,
+    barPercentage: 0.5,
+    datalabels: { anchor: 'end', align: 'top', color: '#0984e3', font: { weight: 'bold', size: 11 }, offset: 8, formatter: labelFmt }
+  }];
+  cmpSel.forEach((key, idx) => {
+    const cfg = cmpMap[key];
+    if(!cfg) return;
+    datasets.push({
+      type: 'line', order: 2,
+      label: cfg.label, data: cfg.data, borderColor: cfg.color,
+      borderDash: cfg.dash, pointRadius: 4, fill: false, tension: .3,
+      datalabels: { align: idx % 2 === 0 ? 'left' : 'right', anchor: idx % 2 === 0 ? 'end' : 'start', offset: 10, color: cfg.color, font: { size: 9, weight: 'bold' }, formatter: labelFmt }
+    });
+  });
+
+  // 补齐 null（用前后值填充，使折线连续）
+  datasets.forEach((ds, i) => {
+    ds.data = ds.data.map((v, j) => v !== null ? v : (j > 0 ? ds.data[j-1] : BASE));
+    // 未单独设置 datalabels 的折线，按索引上下交错
+    if(!ds.datalabels) {
+      ds.datalabels = { align: i % 2 === 0 ? 'left' : 'right', anchor: i % 2 === 0 ? 'end' : 'start', offset: 10, font: { size: 9, weight: 'bold' }, formatter: labelFmt };
+    }
+  });
+
+  makeChart('chartAgentTrend','bar',{
+    labels: allMonths,
+    datasets: datasets
+  },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',formatter:labelFmt},
+      tooltip:{callbacks:{label:function(ctx){
+        const m = allMonths[ctx.dataIndex];
+        const dsLabel = ctx.dataset.label;
+        const v = ctx.parsed.y;
+        if(dsLabel === agent) {
+          const rec = personMonth[agent] && personMonth[agent][m];
+          return agent + ' · ' + m + ' · ' + (rec?rec.count:0) + '次抽检 · 得分' + v.toFixed(2);
+        }
+        return dsLabel + ' · ' + m + ' · 均值' + v.toFixed(2);
+      }}}},
+    scales:{y:{min:yMin,max:yMax,stepSize:step,ticks:{stepSize:step,callback:v=>v.toFixed(2)}}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx = el[0].index;
+        const m = allMonths[idx];
+        if(m) drillAgentMonth(agent, m);
+      }
+    }});
+}
+
+// 所选客服某月扣分明细弹窗
+function drillAgentMonth(agent, month) {
+  // 使用与趋势图一致的原始数据口径
+  let data = getBaseData();
+  if(filterState.type!=='all') data = data.filter(d => d.type===filterState.type);
+  const records = data.filter(d => d.n === agent && d.m === month && d.s < 0);
+  document.getElementById('modalTitle').textContent = agent + ' · ' + month + ' 扣分明细';
+  const body = document.getElementById('modalBody');
+  if(records.length === 0){
+    body.innerHTML = '<p style="color:#636e72;text-align:center;padding:20px 0">该月无扣分记录</p>';
+    document.getElementById('errorModal').classList.add('show');
+    return;
+  }
+  const errMap = {};
+  records.forEach(d => {
+    const key = d.e || '未分类差错';
+    if(!errMap[key]) errMap[key] = {count:0, score:0};
+    errMap[key].count++;
+    errMap[key].score += d.s;
+  });
+  const rows = Object.entries(errMap).sort((a,b) => b[1].count - a[1].count);
+  const totalCount = records.length;
+  const totalScore = records.reduce((sum,d)=>sum+d.s,0);
+  body.innerHTML =
+    '<p style="margin:0 0 12px 0;color:#636e72;font-size:12px">' +
+    '总扣分：<strong style="color:#d63031">' + Math.abs(totalScore).toFixed(2) + '</strong>　' +
+    '涉及记录：<strong>' + totalCount + '</strong> 条' +
+    '</p>' +
+    '<table><thead><tr><th>差错类型</th><th style="text-align:center">条数</th><th style="text-align:right">扣分合计</th></tr></thead><tbody>' +
+    rows.map(([err,v]) => '<tr>' +
+      '<td>' + escapeHtml(err) + '</td>' +
+      '<td style="text-align:center">' + v.count + '</td>' +
+      '<td style="text-align:right;color:#d63031">-' + Math.abs(v.score).toFixed(2) + '</td>' +
+    '</tr>').join('') +
+    '</tbody></table>';
+  document.getElementById('errorModal').classList.add('show');
+}
+
+function renderDetailTable(data) {
+  const months = [...new Set(data.map(d=>d.m))].sort();
+  // 使用统一小组解析，过滤无效小组
+  const groups = [...new Set(data.map(d=>resolveGroup(d)).filter(isValidGroup))].sort();
+  const agents = [...new Set(data.map(d=>d.n))].sort();
+  const cats = [...new Set(data.map(d=>d.c).filter(Boolean))].sort();
+  const errors = [...new Set(data.map(d=>d.e).filter(Boolean))].sort();
+  populateSelect('dtMonth',months); populateSelect('dtGroup',groups);
+  populateSelect('dtAgent',agents); populateSelect('dtCat',cats); populateSelect('dtError',errors);
+  applyTableFilter();
+}
+
+function populateSelect(id, items) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">全部</option>';
+  items.forEach(i => { const o=document.createElement('option'); o.value=i; o.textContent=i; sel.appendChild(o); });
+  if(items.includes(cur)) sel.value = cur;
+}
+
+function applyTableFilter() {
+  let data = getFilteredData();
+  const fM = document.getElementById('dtMonth').value;
+  const fG = document.getElementById('dtGroup').value;
+  const fA = document.getElementById('dtAgent').value;
+  const fC = document.getElementById('dtCat').value;
+  const fE = document.getElementById('dtError').value;
+  const fS = document.getElementById('dtSearch').value.toLowerCase();
+  if(fM) data=data.filter(d=>d.m===fM);
+  if(fG) data=data.filter(d=>resolveGroup(d)===fG);
+  if(fA) data=data.filter(d=>d.n===fA);
+  if(fC) data=data.filter(d=>d.c===fC);
+  if(fE) data=data.filter(d=>d.e===fE);
+  if(fS) data=data.filter(d=>(d.rmk&&d.rmk.toLowerCase().includes(fS))||(d.sid&&d.sid.toLowerCase().includes(fS)));
+  document.getElementById('dtCount').textContent = '共 '+data.length+' 条';
+  const tb = document.getElementById('detailTableBody');
+  tb.innerHTML = data.slice(0,200).map(d => {
+    const score = (BASE + d.s).toFixed(1);
+    const cls = d.s > 0 ? 'score-pos' : d.s < 0 ? 'score-neg' : '';
+    const grp = resolveGroup(d) || '-';
+    const rmkText = d.rmk || '-';
+    const rmkEscaped = rmkText.replace(/'/g, '\\\'').replace(/"/g, '&quot;');
+    return `<tr><td>${d.d||'-'}</td><td>${d.n}</td><td>${grp}</td><td>${d.m}</td>
+      <td>${d.c||'-'}</td><td>${d.e||'-'}</td><td>${d.p||'-'}</td>
+      <td class="${cls}">${score}</td>
+      <td class="rmk-cell" onclick="showRemark('${d.n}','${d.m}','${rmkEscaped}')" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:#0984e3">${rmkText}</td></tr>`;
+  }).join('');
+  if(data.length>200) tb.innerHTML += '<tr><td colspan="9" style="text-align:center;color:#b2bec3;">显示前200条，共 '+data.length+' 条</td></tr>';
+}
+
+// ========== ERRORS ==========
+// ================= 差错池：客服(cs) + 客诉(comp) + 企微专项(zx) 合并，按会话ID去重 =================
+// zx「异常类型」列 → 看板 16 大类差错 语义映射。
+// 映射基于 314 条真实异常记录的词频归纳；历史记录无异常类型列时，备注若恰好等于类型词则同样兜底归类，
+// 其余无法归类的（长文本描述）统一归「其他差错」，不臆造类型。
+var ZX_ETYPE_MAP = {
+  '信息提供错误': '信息提供错误', '信息错误': '信息提供错误',
+  '未按流程执行': '业务流程差错', '未按流程操作': '业务流程差错', '其他流程差错': '业务流程差错',
+  '建单类型错误': '业务流程差错', '建单内容不规范': '业务流程差错', '建单内容有误': '业务流程差错',
+  '建单不规范': '业务流程差错', '客服建单错误': '业务流程差错', '彭家逸建单错误': '业务流程差错', '工单处理错误': '业务流程差错',
+  '解决力欠缺': '解决力', '前客服解决力欠缺': '解决力', '客服解决能力欠缺': '解决力', '解决问题能力待提升': '解决力',
+  '未正面回应': '表达力', '未正面回复': '表达力', '答非所问': '表达力',
+  '表达欠妥': '表达力', '表达随意': '表达力', '表达生硬': '表达力', '表达不当': '表达力', '表达力': '表达力', '表达力欠缺': '表达力',
+  '应反馈未反馈': '应反馈未反馈',
+  '主动性欠缺': '主动性',
+  '未提供已有信息': '解决力',
+  '二级服务态度问题': '服务态度二级'
+};
+var errPoolCache = null;
+function getErrPool(rebuild) {
+  if (errPoolCache && !rebuild) return errPoolCache;
+  var pool = [], seen = {};
+  function tryAdd(rec) {
+    var sid = String(rec.sid || '').trim().slice(0, 12);
+    if (!sid || sid === '/' || sid === '-') sid = '__nosid_' + pool.length; // 空/占位 sid 各自独立计数（无法去重，保留诚实）
+    if (seen[sid]) return false;
+    seen[sid] = 1;
+    pool.push(rec);
+    return true;
+  }
+  (allData.cs || []).forEach(function (d) { if (d.s < 0 && d.e) tryAdd({ d: d.d, td: d.td, m: d.m, n: d.n, g: d.g, e: d.e, rmk: d.rmk, s: d.s, sid: d.sid, src: 'cs' }); });
+  (allData.comp || []).forEach(function (d) { if (d.s < 0 && d.e) tryAdd({ d: d.d, td: d.td, m: d.m, n: d.n, g: '', e: d.e, rmk: d.rmk, s: d.s, sid: d.sid, src: 'comp' }); });
+  (allData.zx || []).forEach(function (x) {
+    if (String(x.abnormal || '').trim() !== '是') return;
+    var raw = String(x.etype || '').trim();
+    var e = ZX_ETYPE_MAP[raw] || ZX_ETYPE_MAP[String(x.remark || '').trim()] || '其他差错';
+    var td = String(x.td || '').trim();
+    var mm = /^(\d{4})[-/](\d{1,2})/.exec(td);
+    var m = mm ? mm[1] + '/' + String(Number(mm[2])).padStart(2, '0') : '';
+    tryAdd({ d: td, td: td, m: m, n: x.agent || '', g: '', e: e, rmk: x.remark || '', s: 0, sid: x.sid, src: 'zx' });
+  });
+  errPoolCache = pool;
+  return errPoolCache;
+}
+// 差错池 + 当前筛选（月份/周/组/人）过滤
+function getFilteredErrPool() {
+  return getErrPool().filter(function (d) {
+    if (filterState.months.length > 0 && (!d.m || filterState.months.indexOf(d.m) < 0)) return false;
+    if (filterState.week) { var w = filterState.week.split('~'); if (d.td && (d.td < w[0] || d.td > w[1])) return false; }
+    if (filterState.group && resolveGroup(d) !== filterState.group) return false;
+    if (filterState.agent && d.n !== filterState.agent) return false;
+    return true;
+  });
+}
+function initErrorTotal() {
+  const allMonths = [...new Set(allData.cs.map(d=>d.m).concat(allData.comp.map(d=>d.m)))].sort();
+  const years = [...new Set(allMonths.filter(m=>m).map(m=>m.split('/')[0]))].sort().filter(y=>y);
+  const ySel = document.getElementById('errTotalYear');
+  const tSel = document.getElementById('errTotalType');
+  const mSel = document.getElementById('errTotalMonth');
+  // 年份
+  ySel.innerHTML = '<option value="">全部</option>';
+  years.forEach(y => { const o=document.createElement('option'); o.value=y; o.textContent=y; ySel.appendChild(o); });
+  ySel.value = years[years.length-1];
+  ySel.onchange = function(){ applyErrorTotal(); };
+  // 月份
+  mSel.innerHTML = '<option value="">全年</option>'+Array.from({length:12},(_,i)=>`<option value="${String(i+1).padStart(2,'0')}">${i+1}月</option>`).join('');
+  mSel.value = '';
+  mSel.onchange = function(){ applyErrorTotal(); };
+  // 差错类型
+  const errTypes = [...new Set(getErrPool().map(d=>d.e).filter(Boolean))].sort();
+  tSel.innerHTML = '<option value="">全部差错</option>'+errTypes.map(t=>`<option value="${t}">${t}</option>`).join('');
+  tSel.value = '';
+  tSel.onchange = function(){ applyErrorTotal(); };
+}
+function applyErrorTotal() {
+  // 数据来源 = 合并差错池（客服+客诉负分 + 企微专项异常=是，按会话ID去重）
+  let trendData = getErrPool().slice();
+  if(filterState.type!=='all') trendData = trendData.filter(d=>d.src===filterState.type);
+  if(filterState.group) trendData = trendData.filter(d => resolveGroup(d) === filterState.group);
+  // 加不满意专项 ss<100 的记录（视为人为差错）
+  const unsatLow = (allData.unsat||[]).filter(d => d.ss < 100).map(d => ({
+    n: d.n, m: d.m, type:'unsat', s: -((100 - d.ss) / 10), e: '不满意专项<100分'
+  }));
+  trendData = trendData.concat(unsatLow);
+  const year = document.getElementById('errTotalYear').value;
+  const month = document.getElementById('errTotalMonth').value;
+  const errType = document.getElementById('errTotalType').value;
+  if(year) trendData = trendData.filter(d=>d.m.startsWith(year));
+  if(month && year) trendData = trendData.filter(d => d.m === year+'/'+month);
+  if(errType) trendData = trendData.filter(d => d.e === errType);
+  // 分子：每月有差错记录数；分母：抽检总量
+  const monthMap = {};
+  trendData.forEach(d => {
+    if(d.e) {
+      if(!monthMap[d.m]) monthMap[d.m] = {errCount:0, totalCount:0};
+      monthMap[d.m].errCount++;
+    }
+  });
+  // 分母：来自“抽检总量”Sheet；岗位/组筛选时仅统计对应人员
+  const allowedNamesForTotal = new Set(trendData.map(d=>d.n).filter(Boolean));
+  if(allData.totalCount) {
+    Object.entries(allData.totalCount).forEach(([key, cnt]) => {
+      const parts = key.split('|');
+      const name = parts[0];
+      const m = parts[1];
+      if(!monthMap[m]) return;
+      if(year && !m.startsWith(year)) return;
+      if(month && !m.endsWith('/'+month)) return;
+      if((filterState.type!=='all' || filterState.group) && !allowedNamesForTotal.has(name)) return;
+      monthMap[m].totalCount += cnt;
+    });
+  }
+  const months = Object.keys(monthMap).sort();
+  const errRateData = months.map(m => {
+    const total = monthMap[m].totalCount;
+    return total > 0 ? (monthMap[m].errCount / total * 100) : 0;
+  });
+  const errCntData = months.map(m => monthMap[m].errCount);
+  makeChart('chartErrorTotalTrend','line',{
+    labels:months,
+    datasets:[
+      {label:'差错数',type:'bar',data:errCntData,
+        backgroundColor:'rgba(9,132,227,0.35)',borderColor:'#0984e3',borderWidth:1,borderRadius:3, yAxisID:'yRight', order:1},
+      {label:'差错率(%)',type:'line',data:errRateData, borderColor:'#d63031',
+        backgroundColor:'rgba(214,48,49,0.08)',fill:true,tension:.3,pointRadius:5,pointHoverRadius:7,borderWidth:3, yAxisID:'yLeft', order:2}
+    ]
+  },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',formatter:function(v,ctx){
+      if(ctx.datasetIndex === 1) return v.toFixed(1) + '%';
+      return v;
+    }}},
+    scales:{
+      yLeft:{position:'left',title:{display:true,text:'差错率(%)'},beginAtZero:true},
+      yRight:{position:'right',title:{display:true,text:'差错数'},grid:{display:false},beginAtZero:true}
+    },
+    onClick:function(e,el){
+      if(el.length>0){
+        var idx = el[0].index, m = months[idx];
+        if(m) drillErrorMonth(m);
+      }
+    }});
+}
+function renderErrors() {
+  // 差错口径统一：合并差错池（cs+comp+zx 按会话ID去重），随月份/组/人筛选
+  let data = getFilteredErrPool();
+
+  // 0. 月度总差错量趋势（第一张）
+  initErrorTotal();
+  applyErrorTotal();
+
+  const errCount = {};
+  data.forEach(d=>{if(d.e)errCount[d.e]=(errCount[d.e]||0)+1});
+  const errTop = Object.entries(errCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const topLabels = errTop.map(d=>d[0]);
+  const topVals = errTop.map(d=>d[1]);
+  const errTopMax = Math.max(...topVals, 1);
+  makeChart('chartErrorTop','bar',{
+    labels:topLabels,datasets:[{data:topVals,backgroundColor:'#e17055',borderRadius:3}]
+  },{indexAxis:'y',plugins:{legend:{display:false},datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'start',offset:-4,formatter:v=>v}},
+    layout:{padding:{left:20,right:30}},scales:{x:{beginAtZero:true,max:errTopMax+1},y:{ticks:{font:{size:9},autoSkip:false},afterFit:function(scale){scale.width=90;}}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx = el[0].index;
+        const errName = topLabels[idx];
+        // 该差错的人员排名
+        const agentMap = {};
+        data.forEach(d=>{
+          if(d.e === errName && d.n){
+            if(!agentMap[d.n]) agentMap[d.n] = 0;
+            agentMap[d.n]++;
+          }
+        });
+        const sorted = Object.entries(agentMap).sort((a,b)=>b[1]-a[1]);
+        showModal(errName+' · '+sorted.reduce((a,b)=>a+b[1],0)+'次', sorted.map(([n,c])=>[n, {count:c, sumAdj:0, bonuses:0, deductions:0}]));
+      }
+    }});
+
+  // 人员姓名 × 差错细项（堆叠柱状图）
+  const agentErr = {};
+  data.forEach(d=>{if(d.n&&d.e){if(!agentErr[d.n])agentErr[d.n]={};agentErr[d.n][d.e]=(agentErr[d.n][d.e]||0)+1}});
+  const al = Object.keys(agentErr).sort();
+  const topE = errTop.map(d=>d[0]);
+  const colors = BASE_COLORS.slice(0,topE.length);
+    makeChart('chartErrorHeat','bar',{
+    labels:topE,
+    datasets:al.map((a, i)=>({label:a, data:topE.map(e=>agentErr[a][e]||0), backgroundColor:colors[Math.min(i, colors.length-1)]}))
+  },{
+    scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,title:{display:true,text:'次数'}}},
+    plugins:{
+      legend:{position:'bottom',labels:{font:{size:9},boxWidth:10}},
+      datalabels:{display:function(ctx){return ctx.dataset.data[ctx.dataIndex]>0},color:'#fff',font:{weight:'bold',size:9},anchor:'center',formatter:v=>v}
+    },
+    onClick:function(e,el){
+      if(el.length>0){
+        const ti = el[0].index;
+        const errName = topE[ti];
+        const personErr = {};
+        data.forEach(function(d){if(d.e===errName){personErr[d.n]=(personErr[d.n]||0)+1;}});
+        const sorted = Object.entries(personErr).filter(function(e){return e[1]>0;}).sort((a,b)=>b[1]-a[1]);
+        document.getElementById('modalTitle').textContent = errName+' · 扣分人员及次数';
+        document.getElementById('modalBody').innerHTML = '<table><thead><tr><th>姓名</th><th>次数</th></tr></thead><tbody>'+
+          sorted.map(function(e){return '<tr><td>'+e[0]+'</td><td style="text-align:center;font-weight:bold;color:#d63031">'+e[1]+'</td></tr>';}).join('')+
+          '</tbody></table>';
+        document.getElementById('errorModal').classList.add('show');
+      }
+    }
+  });
+
+  // Group x Error with click drill-down（专项 zx 无组归属且组体系不同，不参与员组对比）
+  const grpErr = {};
+  data.forEach(d=>{
+    if(d.src==='zx') return;
+    const g = resolveGroup(d);
+    // Skip the generic "未分组" label when there's a better grouping available
+    if(g==='未分组' && filterState.type!=='all') return;
+    if(d.e){if(!grpErr[g])grpErr[g]={};grpErr[g][d.e]=(grpErr[g][d.e]||0)+1}
+  });
+  const gl = Object.keys(grpErr).sort();
+  const et = [...new Set(topE)];
+  if(gl.length > 0) {
+    makeChart('chartErrorGroup','bar',{
+      labels:gl,datasets:et.map((e,i)=>({label:e,data:gl.map(g=>grpErr[g][e]||0),backgroundColor:colors[i]}))
+    },{plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:9}}},
+      datalabels:{display:function(ctx){return ctx.dataset.data[ctx.dataIndex]>0},color:'#fff',font:{weight:'bold',size:8},anchor:'center',formatter:v=>v}},
+      layout:{padding:{left:20,right:20}},
+      onClick:function(e,el){if(el.length>0){
+        const ci = el[0].datasetIndex;
+        const gi = el[0].index;
+        const grpName = gl[gi];
+        const errName = et[ci];
+        const agents = {};
+        data.forEach(d=>{
+          const g = resolveGroup(d);
+          if(g===grpName && d.e===errName){
+            if(!agents[d.n]) agents[d.n] = {count:0,sumAdj:0};
+            agents[d.n].count++;
+            agents[d.n].sumAdj += d.s;
+          }
+        });
+        const sorted = Object.entries(agents).sort((a,b)=>b[1].count-a[1].count);
+        showModal(grpName+' - '+errName, sorted);
+      }}
+    });
+  }
+
+  // 专项商品差错 TOP6（是否异常=是）
+  renderZxErrorProduct();
+
+  // 差错情况分析（参考报告结构）
+  renderErrorAnalysis();
+
+  // 原"差错变化趋势"板块已删除，不再初始化对应控件
+}
+
+function renderZxErrorProduct() {
+  const canvas = document.getElementById('chartZxErrorProduct');
+  if(!canvas) return;
+  // 专项数据：是否异常="是"视为差错
+  let zxData = (allData.zx || []).filter(function(d){
+    if(String(d.abnormal).trim() !== '是') return false;
+    // 从 td 字段推导月份（格式 YYYY-MM-DD → YYYY/MM），按选中月份筛选
+    var td = d.td || '';
+    if(td.length >= 7 && /^\d{4}-\d{2}/.test(td)) {
+      var m = td.slice(0,4) + '/' + td.slice(5,7);
+      return filterState.months.length === 0 || filterState.months.includes(m);
+    }
+    // 无有效日期的记录：仅在"全部月份"时显示
+    return filterState.months.length === 0;
+  });
+  // 按商品名称聚合
+  const prodMap = {};
+  zxData.forEach(d => {
+    const key = (d.product_name || '').trim();
+    if(!key || key === '未填' || key === 'undefined' || key === 'null') return;
+    if(!prodMap[key]) prodMap[key] = {cnt:0, remarks:{}};
+    prodMap[key].cnt++;
+    const rmk = (d.remark || '').trim() || '未分类';
+    prodMap[key].remarks[rmk] = (prodMap[key].remarks[rmk] || 0) + 1;
+  });
+  const top = Object.entries(prodMap).sort((a,b)=>b[1].cnt-a[1].cnt).slice(0,6);
+  if(top.length === 0) {
+    canvas.parentNode.innerHTML = '<div style="padding:40px;text-align:center;color:#b2bec3;font-size:12px">暂无专项差错数据</div>';
+    return;
+  }
+  const labels = top.map(d=>d[0]);
+  const values = top.map(d=>d[1].cnt);
+  const zxErrMax = Math.max(...values, 1);
+  makeChart('chartZxErrorProduct','bar',{
+    labels:labels, datasets:[{label:'差错次数',data:values,backgroundColor:'#d63031',borderRadius:3}]
+  },{indexAxis:'y',plugins:{legend:{display:false},
+    datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'start',offset:-4,formatter:v=>v}},
+    layout:{padding:{left:20,right:30}},
+    scales:{x:{beginAtZero:true,max:zxErrMax+1},y:{ticks:{font:{size:9},autoSkip:false},afterFit:function(scale){scale.width=160;}}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx=el[0].index;
+        const prodName=labels[idx];
+        const remarks=top[idx][1].remarks;
+        const sorted=Object.entries(remarks).sort((a,b)=>b[1]-a[1]);
+        let html='<table><thead><tr><th>差错类型（备注）</th><th>次数</th></tr></thead><tbody>';
+        sorted.forEach(function(e){html+='<tr><td>'+e[0]+'</td><td style="text-align:center;font-weight:bold;color:#d63031">'+e[1]+'</td></tr>';});
+        html+='</tbody></table>';
+        document.getElementById('modalTitle').textContent=prodName+' · 专项差错类型分布';
+        document.getElementById('modalBody').innerHTML=html;
+        document.getElementById('errorModal').classList.add('show');
+      }
+    }});
+}
+
+// ========== 差错情况分析（参考报告结构） ==========
+var ERROR_SUBITEMS = {"小额打款非金额差错":[{"name":"申请原因错误","kw":["申请原因错误","原因错误","打款原"]},{"name":"订单号信息缺失","kw":["订单号","单号","应该选择订单","尾号","订单id","订单ID","应该选择"]},{"name":"订单关联错误","kw":["关联订单","订单关联","关联错","关联"]},{"name":"重复打款","kw":["重复打款","重复"]},{"name":"打款金额错误","kw":["打款金额","金额错误","打款数"]},{"name":"未修改订单状态","kw":["未修改订单状态","订单售后状态","售后状态","订单状态","未修改状态"]},{"name":"判责/建单类型错误","kw":["工单类型错误","工单类型","建单类型","判责错误","判责","应该建"]},{"name":"流程要素缺失(凭证/备注)","kw":["未上传","没有上传","上传问题","上传支付凭证","上传商品问题","部分退款","未作订单备注","订单备注","未作备注","未备注","问题图片","支付凭证"]},{"name":"补偿操作失误","kw":["优惠券","错删","未删除","删除定金","现金补偿","提供了现金","补偿方式有误","补偿方式"]}],"业务流程差错":[{"name":"中奖信息登记错","kw":["中奖","登记"]},{"name":"政策宣贯未跟进","kw":["政策","宣贯","未跟进","跟进","已宣贯","未在线告知","未告知","在线未告知","未提醒","未提醒告知"]},{"name":"建单类型错误","kw":["建单","工单类型","单类型","建错单","客服投诉工单","投诉工单","应新建","新建客服","添加备注","建单反馈"]},{"name":"账号换绑注销错","kw":["换绑","注销","账号注销","恢复账号","恢复账户","恢复小芒账号","账户恢复","覆盖账户","账号覆盖"]},{"name":"改地址流程错","kw":["改地址","改址","地址流程","升级套餐"]},{"name":"补发关联遗漏","kw":["补发","关联遗漏","漏关联","整单退款","已有备注","仍操作订单","仍操作"]},{"name":"引导/路径错误","kw":["引导","外渠","黄牛","应引导","引导让","引导提供","引导剪卡","引导用户联系","引导客户提供","让用户裁剪","裁剪海报","引导联系"]},{"name":"核实不足(未核实/未核对)","kw":["未核实","未与用户核实","未核对","未说明对应","uuid","收件号码","未提供收件","非本人","支付方式截图","未与","未查询","复查","上一客服","前客服"]},{"name":"误拒/误判/误解","kw":["无小票拒绝","拒绝用户售后","小票非必要","以无小票","飞单","误判","误解","告知用户错发","并未错发","咨询是否错发","反馈错误","导致用户另一个","拒绝用户诉求","直接拒绝","拒绝退款"]},{"name":"业务不熟/答非所问","kw":["批量采购","商家入驻","订货渠道","入驻流程","商家入驻审核","充值商家入驻","入驻审核时效","未在线引导","未引导","未主动","业务不熟","未有效利用"]},{"name":"补偿方式错","kw":["应补偿","实际补偿","补偿礼金","补偿现金"]}],"解决力":[{"name":"未理解用户意图","kw":["未理解","理解错误","理解偏差","未理解用户","理解用户","意图","误","并非","实际","无需","并未","改口"]},{"name":"不当婉拒退款","kw":["婉拒","已拒绝","拒绝退款","不当拒","不合时宜","机械","不接受其他","直接拒绝","拒绝用户诉求","拒绝用户"]},{"name":"业务理解错误","kw":["业务理解","业务不熟","业务错误","规则理解","不熟","未能查到","知识库","宣贯","重点内容"]},{"name":"未针对问题安抚","kw":["未安抚","安抚","缺乏同理","同理心","欠专业","情绪","不耐烦"]},{"name":"信息修改诉求误判","kw":["信息修改","修改诉求","误判"]},{"name":"未核实即处理/直接回复","kw":["未核实","直接回复","直接","未核实订单","未核实商品","直接反馈","未解释","不售后","无开箱视频不售后","未作出有效","未有效利用"]},{"name":"未提供有效方案/未解决","kw":["未解决","仍未解决","有效解答","未有效","最优的解决方案","最有效的解决方法","未依据用户","应解释未解释","可解决的情况下","换货","差价补偿","退款重拍","不应建议","咨询单","建单核实","需建单","工单反馈","及时工单","尝试反馈","未提供最优"]},{"name":"未利用已有信息/重复询问","kw":["重复","前历史对话已经提供","已宣贯","已有信息提供","未告知用户","多次引导","仍多次","联系不上的截图","进一步核实"]}],"来电原因点选错误":[{"name":"戳戳乐退款错选","kw":["戳戳乐","退款错选"]},{"name":"机甲类错选","kw":["机甲"]},{"name":"云集市诈骗错选","kw":["云集市","诈骗"]},{"name":"抽卡机错选","kw":["抽卡机","卡机"]},{"name":"卡牌品质错选","kw":["卡牌","品质"]},{"name":"其他类错选","kw":["错选","点选错误","选错","点选","应选","错结","商品咨询","咨询"]}],"信息提供错误":[{"name":"活动/地址发错","kw":["活动地址","地址发错","地址错","成都","杭州","场地址","发送","发货"]},{"name":"艺人名/规格/工艺错","kw":["艺人","规格","艺人名","隐藏款","版面","版本","D版","A版","特典","工艺","刺绣","材质","口袋","实物","眼睛","编卡","卡面","随机","错印","印刷"]},{"name":"金额/补偿告知错","kw":["补偿金额","补偿","金额错","运费","单独下单","金额","满196","196元","优惠"]},{"name":"时效/发货告知错","kw":["时效","承诺","超时","发货时间","120天","补货","第三批","邮寄","发货"]},{"name":"商品/活动信息告知错","kw":["商品信息","信息有误","回复错误","告知","宣贯有说","知识库","已更新","已明确","已宣贯","客服告知","客服回复","错误告知","客服在线","在线","信息获取错误","答复错误","重新注册","注销后","热线","400","微博","站子","链接","路径","引导","赠送","满"]}],"表达力":[{"name":"错别字用词不当","kw":["错别字","用词不当","错字","用词","表述","表达不恰当","表达随意","敷衍","随意","消极","反问","质疑感","模糊","容易引发","易造成","认知偏差","不当"]},{"name":"答非所问","kw":["答非所问","答非","未答","未正面回复","未正面","仅回复其中","另一问题","正面回答","一直未正面"]},{"name":"过度口语化","kw":["口语化","过度口语","口头"]},{"name":"错发引发歧义","kw":["错发","歧义","发错","误解平台","虚假发货"]},{"name":"未回复诉求","kw":["未回复","未回应","未答复","未留言"]}],"主动性":[{"name":"未挽留退款","kw":["挽留","未挽","未挽留"]},{"name":"未查询告知","kw":["未查询","未告知","查询告知","可直接告知","可直接"]},{"name":"未核实历史会话","kw":["核实","历史会话","历史记录","历史","复查","上一客服","前客服","未复查"]},{"name":"未发送问卷","kw":["问卷","未发问卷","未发送"]},{"name":"未回复未留言","kw":["未留言","留言","未回复"]},{"name":"未核实即反馈","kw":["未核实","即反馈","核实即","主动查询","查阅","知识库","主动","未先","未主动"]}],"应反馈未反馈":[{"name":"承诺未反馈","kw":["承诺","未反馈","催促","附言","未附言"]},{"name":"应建单未建","kw":["应建单","未建单","应建","未建","建单","同步建单","需建单","建单反馈"]},{"name":"复核未反馈","kw":["复核","未复核"]},{"name":"退款金额未标注","kw":["退款金额","未标注","标注"]},{"name":"应反馈未处理","kw":["可直接售后","可直接","应同步","需建单反馈","工单内写明","情况即可"]}],"响应超时":[{"name":"超时未回应","kw":["超时","未回应","响应超时","未及时给予回应","未及时","未回复","没有回复","未给予"]},{"name":"长时空窗搁置","kw":["空窗","搁置","长时间","超9分钟","分钟未回复"]},{"name":"超时未留言","kw":["超时","未留言","未报备","无任何不能回复","没有报备"]}],"小额打款金额差错":[{"name":"打款原因错","kw":["打款原因","原因错"]},{"name":"单号填错","kw":["单号填错","填错"]},{"name":"多打重复","kw":["多打","重复","多打重复"]},{"name":"少打","kw":["少打","打少"]}],"情感共鸣":[{"name":"情绪未安抚","kw":["情绪","未安抚","安抚","情绪未"]}],"服务态度一级":[{"name":"冷漠生硬","kw":["冷漠","生硬","态度冷漠","无主动","缺乏安抚","主动服务意识"]}],"信息泄露":[{"name":"错发他人信息","kw":["泄露","错发他人","他人信息","信息泄露","中签短信","其他用户","错发其他"]}],"整通未应答":[{"name":"整通未应答","kw":["整通未应答","未应答","整通","全通","首语"]}],"超服务范围承诺":[{"name":"超范围补发","kw":["超范围","超服务范围","超服务","原地址补发","未录制","仅录制"]}],"服务态度二级":[{"name":"语气不耐烦","kw":["不耐烦","语气","语气不耐"]}]};
+
+function renderErrorAnalysis() {
+  var container = document.getElementById('errorAnalysisContent');
+  var subtitle = document.getElementById('errorAnalysisSubtitle');
+  if(!container) return;
+
+  // 获取当前筛选条件下的数据
+  var data = getFilteredData();
+  // 差错口径统一：合并差错池（cs+comp+zx 按会话ID去重，含企微专项异常记录）
+  var negData = getFilteredErrPool();
+  eaPoolCache = negData; // 缓存，供「类型×月份 人员集中度」下拉框复用
+
+  // 月份标签
+  var months = filterState.months || [];
+  if(months.length === 0) months = [...new Set(data.map(function(d){return d.m}).filter(Boolean))].sort();
+  var monthLabel = months.length === 0 ? '全部' : (months.length <= 3 ? months.join('、') : months.length + '个月');
+  subtitle.textContent = '数据范围：' + monthLabel;
+
+  if(negData.length === 0) {
+    container.innerHTML = '<div class="ea-empty">当前筛选条件下无差错记录</div>';
+    return;
+  }
+
+  // ---- 基础统计 ----
+  var totalNeg = negData.length;
+  var totalScore = negData.reduce(function(s,d){return s + d.s}, 0);
+  var agents = [...new Set(negData.map(function(d){return d.n}))];
+  var errTypes = [...new Set(negData.map(function(d){return d.e}))];
+  var negPct = data.length > 0 ? (totalNeg / data.length * 100).toFixed(1) : 0;
+
+  // ---- 差错分类聚合 ----
+  var catMap = {};  // 差错类型 → {count, agents:{name:cnt}, remarks:[], examples:[]}
+  negData.forEach(function(d){
+    if(!catMap[d.e]) catMap[d.e] = {count:0, agents:{}, remarks:[], examples:[]};
+    catMap[d.e].count++;
+    if(d.n) catMap[d.e].agents[d.n] = (catMap[d.e].agents[d.n]||0) + 1;
+    if(d.rmk) {
+      var rmk = String(d.rmk).trim();
+      if(rmk && rmk !== '未填' && rmk !== 'undefined') {
+        if(catMap[d.e].remarks.length < 3) catMap[d.e].remarks.push(rmk);
+        if(catMap[d.e].examples.length < 2) catMap[d.e].examples.push({n:d.n, rmk:rmk, m:d.m||''});
+      }
+    }
+  });
+  var sortedCats = Object.entries(catMap).sort(function(a,b){return b[1].count - a[1].count});
+
+  // ---- 人员排名 ----
+  var agentErrMap = {};
+  negData.forEach(function(d){
+    if(!d.n) return;
+    if(!agentErrMap[d.n]) agentErrMap[d.n] = {count:0, types:{}, score:0, examples:[]};
+    agentErrMap[d.n].count++;
+    agentErrMap[d.n].score += d.s;
+    if(d.e) agentErrMap[d.n].types[d.e] = (agentErrMap[d.n].types[d.e]||0) + 1;
+    if(agentErrMap[d.n].examples.length < 2 && d.rmk) agentErrMap[d.n].examples.push({e:d.e, rmk:String(d.rmk).slice(0,60)});
+  });
+  var sortedAgents = Object.entries(agentErrMap).sort(function(a,b){return b[1].count - a[1].count});
+  var maxAgentCnt = sortedAgents.length > 0 ? sortedAgents[0][1].count : 1;
+
+  // ---- 高风险点识别 ----
+  var riskItems = [];
+  // 规则1：同一差错类型多人集中出错（>=3人且该类型占比>30%）
+  sortedCats.forEach(function(cat){
+    var agentNames = Object.keys(cat[1].agents);
+    if(agentNames.length >= 3 && cat[1].count / totalNeg > 0.15) {
+      riskItems.push({
+        level: 'critical',
+        title: 'CRITICAL · "' + cat[0] + '" 多人集中出错 (' + agentNames.length + '人/' + cat[1].count + '次)',
+        desc: agentNames.join('、') + ' 等 ' + agentNames.length + ' 名客服均出现"' + cat[0] + '"问题，合计 ' + cat[1].count + ' 次，占当月差错的 ' + (cat[1].count/totalNeg*100).toFixed(0) + '%。' +
+          (cat[1].examples.length > 0 ? '典型如：' + cat[1].examples[0].n + '——' + cat[1].examples[0].rmk : '')
+      });
+    }
+  });
+  // 规则2：单人高频出错（>=5次）
+  sortedAgents.forEach(function(ag){
+    if(ag[1].count >= 5) {
+      var topTypes = Object.entries(ag[1].types).sort(function(a,b){return b[1]-a[1]}).slice(0,2);
+      var typeStr = topTypes.map(function(t){return t[0]+'×'+t[1]}).join('、');
+      riskItems.push({
+        level: ag[1].count >= 8 ? 'critical' : 'warn',
+        title: (ag[1].count >= 8 ? 'HIGH-RISK' : 'WARN') + ' · ' + ag[0] + ' 高频差错 (' + ag[1].count + '次)',
+        desc: ag[0] + ' 当月/期间共 ' + ag[1].count + ' 条负面记录，扣分合计 ' + Math.abs(ag[1].score).toFixed(1) + ' 分。主要短板：' + typeStr + '。' +
+          (ag[1].examples.length > 0 ? '例如：' + ag[1].examples[0].e + '——' + ag[1].examples[0].rmk : '')
+      });
+    }
+  });
+
+  // ---- 根因映射 ----
+  var rootCauses = [
+    {title:'① 口径/规则答错', desc:'活动及规则更新已做培训，但抽检中同口径出现"部分答对部分答错"。说明不是口径没下发，而是部分人员未真正理解或执行到位。', tags:['信息','规则','限购','吧唧']},
+    {title:'② 流程执行不规范', desc:'建单内容登错、要素漏填、工单关联错误等问题反复出现，说明提交前缺乏二次核对或 checklist 校验机制。', tags:['建单','工单','流程','小额打款']},
+    {title:'③ 解决力/主动性不足', desc:'未及时整理用户问题给出有效处理方案、仅记录反馈未跟进、未主动查询历史记录等，依赖个人悟性而非标准化SOP。', tags:['解决力','主动性','核实']},
+    {title:'④ 表达/态度问题', desc:'质疑感语气、敷衍回复、情绪未安抚等软技能缺失，容易引发用户不满升级为客诉。', tags:['表达','态度','情绪','安抚']}
+  ];
+
+  // ====== 组装 HTML ======
+  var html = '';
+
+  // 1. 核心结论
+  html += '<div class="ea-section"><div class="ea-summary-box">';
+  html += '<h4 style="margin:0 0 6px 0;font-size:13px;color:#F96C3B">📌 核心结论</h4>';
+  var topCat = sortedCats.length > 0 ? sortedCats[0] : null;
+  var topAg = sortedAgents.length > 0 ? sortedAgents[0] : null;
+  var topCatPct = topCat ? (topCat[1].count/totalNeg*100).toFixed(0) : 0;
+  html += '<p>本期共 <span class="ea-num">' + totalNeg + '</span> 条负面记录（占抽检 <span class="ea-highlight">' + negPct + '%</span>），涉及 <span class="ea-num">' + agents.length + '</span> 名客服、<span class="ea-num">' + errTypes.length + '</span> 类差错细项。</p>';
+  if(topCat) {
+    html += '<p>最主要的问题集中在 <span class="ea-highlight">"' + topCat[0] + '"</span>，占全部差错的 <span class="ea-num">' + topCatPct + '%</span>' +
+      (topAg ? '；人员最集中的是 <span class="ea-highlight">' + topAg[0] + '</span>（' + topAg[1].count + '条）' : '') + '。</p>';
+  }
+  // 一句话总结
+  if(topCat && topAg) {
+    var topAgTopType = Object.entries(topAg[1].types).sort(function(a,b){return b[1]-a[1]});
+    var shortVerdict = '近' + (topCatPct) + '%的差错来自"' + topCat[0] + '"' +
+      (topAgTopType[0] ? '，其中' + topAg[0] + '在"' + topAgTopType[0][0] + '"上出错最多（' + topAgTopType[0][1] + '次）' : '');
+    html += '<p style="color:#555;border-top:1px solid #f0e0d0;padding-top:6px;margin-top:4px"><b>一句话：</b>' + shortVerdict + '。</p>';
+  }
+  html += '</div></div>';
+
+  // 2. 问题分类表
+  if(sortedCats.length > 0) {
+    html += '<div class="ea-section"><h4>📊 问题分类 · 差错类型分布</h4>';
+    html += '<table class="ea-cat-table"><thead><tr><th>缺陷类别</th><th>次数</th><th>占比</th><th>涉及客服</th></tr></thead><tbody>';
+    sortedCats.forEach(function(cat){
+      var agList = Object.keys(cat[1].agents);
+      html += '<tr>';
+      html += '<td><b>' + escapeHtml(cat[0]) + '</b></td>';
+      html += '<td class="ea-count">' + cat[1].count + '</td>';
+      html += '<td class="ea-pct">' + (cat[1].count/totalNeg*100).toFixed(1) + '%</td>';
+      html += '<td class="ea-agents" title="' + agList.join('、') + '">' + agList.slice(0,5).join('、') + (agList.length>5?' 等'+agList.length+'人':'') + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    // 典型案例
+    var hasExamples = sortedCats.some(function(c){return c[1].examples.length > 0});
+    if(hasExamples) {
+      html += '<div style="margin-top:10px">';
+      html += '<p style="font-size:11px;color:#636e72;margin:0 0 4px 0">📝 典型案例（引用质检备注原文）：</p>';
+      sortedCats.forEach(function(cat){
+        if(cat[1].examples.length > 0) {
+          cat[1].examples.forEach(function(ex){
+            html += '<div style="background:#fafafa;border-radius:4px;padding:6px 10px;margin-bottom:4px;font-size:11px;line-height:1.6;border-left:3px solid #f96c3b">';
+            html += '<b style="color:#2A2018">' + ex.n + '</b>（' + (ex.m||'?') + '）：' + escapeHtml(ex.rmk);
+            html += '</div>';
+          });
+        }
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // 3. 人员集中度排名
+  if(sortedAgents.length > 0) {
+    html += '<div class="ea-section"><h4>👥 人员集中度 · 按负面条数排序</h4>';
+    html += '<p style="font-size:11px;color:#636e72;margin:0 0 8px 0">"抽检多≠问题多"，需结合问题画像看具体短板</p>';
+    sortedAgents.forEach(function(ag, idx){
+      var pct = ag[1].count / maxAgentCnt * 100;
+      var topTypes = Object.entries(ag[1].types).sort(function(a,b){return b[1]-a[1]}).slice(0,2);
+      var tagStr = topTypes.map(function(t){return t[0]}).join('、');
+      var riskClass = ag[1].count >= 8 ? 'risk-high' : (ag[1].count >= 5 ? 'risk-mid' : '');
+      html += '<div class="ea-rank-row ' + riskClass + '">';
+      html += '<span class="ea-rank-num">' + (idx+1) + '</span>';
+      html += '<span class="ea-rank-name">' + escapeHtml(ag[0]) + '</span>';
+      html += '<div class="ea-rank-bar"><div class="ea-rank-fill" style="width:' + pct + '%"></div></div>';
+      html += '<span class="ea-rank-val">' + ag[1].count + '</span>';
+      html += '<span class="ea-rank-tags" title="' + tagStr + '">' + tagStr + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // 4. 高风险点
+  if(riskItems.length > 0) {
+    html += '<div class="ea-section"><h4>⚠️ 高风险点 · 最需要警惕的问题</h4>';
+    riskItems.forEach(function(risk){
+      html += '<div class="ea-risk-card ' + (risk.level==='warn'?'warn':'') + '">';
+      html += '<div class="ea-risk-title">' + (risk.level==='critical'?'🔴':'🟡') + ' ' + risk.title + '</div>';
+      html += '<div class="ea-risk-desc">' + risk.desc + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // 5. 根因分析
+  html += '<div class="ea-section"><h4>🔍 根因分析 · 问题到底是怎么来的</h4>';
+  html += '<div class="ea-root-grid">';
+  rootCauses.forEach(function(rc){
+    // 统计该根因关联的差错数量
+    var relatedCount = 0;
+    sortedCats.forEach(function(cat){
+      var matched = rc.tags.some(function(tag){ return cat[0].indexOf(tag) >= 0; });
+      if(matched) relatedCount += cat[1].count;
+    });
+    html += '<div class="ea-root-item">';
+    html += '<div class="ea-root-title">' + rc.title + (relatedCount > 0 ? ' <span style="color:#d63031;font-weight:400;font-size:10.5px">(' + relatedCount + '条)</span>' : '') + '</div>';
+    html += '<div class="ea-root-desc">' + rc.desc + '</div>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  // 6. 差错细项详细分析（基于质检备注 rmk 关键词归纳，随月份筛选动态计算）
+  (function(){
+    var subHtml = '';
+    subHtml += '<div class="ea-sub-wrap">';
+    sortedCats.forEach(function(cat){
+      var subDefs = ERROR_SUBITEMS[cat[0]] || [];
+      if(!subDefs.length) return;
+      var subCount = {}, subEx = {};
+      subDefs.forEach(function(s){ subCount[s.name]=0; subEx[s.name]=''; });
+      var otherCnt = 0;
+      negData.forEach(function(d){
+        if(d.e !== cat[0] || !d.rmk) return;
+        var rmk = String(d.rmk).trim();
+        if(!rmk || rmk==='未填') return;
+        var hit=null;
+        for(var i=0;i<subDefs.length;i++){
+          if(subDefs[i].kw.some(function(k){return rmk.indexOf(k)>=0})){ hit=subDefs[i].name; break; }
+        }
+        if(hit){ subCount[hit]++; if(!subEx[hit]) subEx[hit]=rmk; } else { otherCnt++; }
+      });
+      var rows = subDefs.filter(function(s){return subCount[s.name]>0;})
+        .map(function(s){return {name:s.name, cnt:subCount[s.name], ex:subEx[s.name]};});
+      if(otherCnt>0) rows.push({name:'其他（未归类）', cnt:otherCnt, ex:''});
+      rows.sort(function(a,b){return b.cnt-a.cnt;});
+      var maxSub = rows.length ? rows[0].cnt : 1;
+      subHtml += '<div class="ea-sub-cat">';
+      subHtml += '<div class="ea-sub-cat-head"><b>'+escapeHtml(cat[0])+'</b><span class="ea-sub-cat-total">'+cat[1].count+' 条</span></div>';
+      rows.forEach(function(r){
+        var pct = maxSub ? (r.cnt/maxSub*100) : 0;
+        subHtml += '<div class="ea-sub-row">';
+        subHtml += '<div class="ea-sub-name">'+escapeHtml(r.name)+' <span class="ea-sub-cnt">'+r.cnt+'</span></div>';
+        subHtml += '<div class="ea-sub-bar"><div class="ea-sub-fill" style="width:'+pct+'%"></div></div>';
+        if(r.ex) subHtml += '<div class="ea-sub-ex">📝 '+escapeHtml(r.ex.length>90? r.ex.slice(0,90)+'…':r.ex)+'</div>';
+        subHtml += '</div>';
+      });
+      subHtml += '</div>';
+    });
+    subHtml += '</div>';
+    html += '<div class="ea-section"><h4>🔬 差错细项详细分析 <span style="font-size:10px;color:#b2bec3;font-weight:400">（据质检备注归纳，匹配率≈91%，未命中归入"其他"）</span></h4>';
+    html += '<p style="font-size:11px;color:#636e72;margin:0 0 10px 0">将每个一级差错大类拆为二级细项并计数，附真实质检备注案例。随月份筛选动态更新。</p>';
+    html += subHtml;
+    html += '</div>';
+  })();
+
+  // 7. 差错类型 × 月份 · 人员集中度（新增：可选差错类型，查看该类每月集中人员）
+  html += '<div class="ea-section"><h4>🗓️ 差错类型 × 月份 · 人员集中度</h4>';
+  html += '<p style="font-size:11px;color:#636e72;margin:0 0 8px 0">选择某一类差错，查看该类<b>每个月集中在哪些人员</b>。表格行=月份、列=该类出错最多的 Top10 人员，底色越深=出错越多。</p>';
+  html += '<div style="margin-bottom:10px"><label style="font-size:12px;margin-right:8px;color:#2A2018">差错类型：</label>'
+        + '<select id="eaTypePersonSelect" style="padding:5px 10px;border-radius:5px;border:1px solid #e0e0e0;font-size:12px;background:#fff;color:#2A2018;min-width:180px"></select></div>';
+  html += '<div id="eaTypePersonBody"></div>';
+  html += '</div>';
+
+  container.innerHTML = html;
+
+  // 初始化「差错类型×月份 人员集中度」板块（非侵入，仅新增）
+  (function(){
+    var sel = document.getElementById('eaTypePersonSelect');
+    if(!sel) return;
+    var types = [...new Set(eaPoolCache.map(function(d){return d.e}))].filter(Boolean)
+      .sort(function(a,b){ return eaPoolCache.filter(function(d){return d.e===b}).length - eaPoolCache.filter(function(d){return d.e===a}).length; });
+    if(types.length === 0){ sel.innerHTML = '<option>无差错类型</option>'; return; }
+    sel.innerHTML = types.map(function(t){return '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>'}).join('');
+    sel.onchange = renderEaTypePerson;
+    renderEaTypePerson();
+  })();
+}
+
+// 渲染「差错类型×月份 人员集中度」热力矩阵（可点击下拉框切换类型，不改动其他板块）
+function renderEaTypePerson() {
+  var sel = document.getElementById('eaTypePersonSelect');
+  var body = document.getElementById('eaTypePersonBody');
+  if(!sel || !body) return;
+  var type = sel.value;
+  if(!type){ body.innerHTML = ''; return; }
+  var pool = (window.eaPoolCache || []).filter(function(d){ return d.e === type; });
+  if(pool.length === 0){ body.innerHTML = '<div class="ea-empty">该类型在当前筛选条件下无数据</div>'; return; }
+
+  // 月份（升序）
+  var months = [...new Set(pool.map(function(d){return d.m}).filter(Boolean))].sort();
+  // 该类整体 Top10 人员（列）
+  var pCount = {};
+  pool.forEach(function(d){ if(d.n) pCount[d.n] = (pCount[d.n]||0) + 1; });
+  var topPersons = Object.entries(pCount).sort(function(a,b){return b[1]-a[1]}).slice(0,10).map(function(e){return e[0];});
+  var maxC = Math.max.apply(null, Object.values(pCount).concat([1]));
+
+  // 热力矩阵
+  var html = '<table style="border-collapse:collapse;font-size:11px;width:100%;max-width:760px">';
+  html += '<thead><tr><th style="text-align:left;padding:4px 8px;background:#fafafa;color:#636e72;font-weight:600;border:1px solid #eee">月份＼人员</th>';
+  topPersons.forEach(function(p){ html += '<th style="padding:4px 6px;background:#fafafa;color:#2A2018;border:1px solid #eee;font-weight:600;min-width:42px">'+escapeHtml(p)+'</th>'; });
+  html += '</tr></thead><tbody>';
+  months.forEach(function(m){
+    html += '<tr><th style="text-align:left;padding:4px 8px;background:#fafafa;color:#F96C3B;border:1px solid #eee;font-weight:600;white-space:nowrap">'+escapeHtml(m)+'</th>';
+    var rowCnt = {};
+    pool.filter(function(d){return d.m===m;}).forEach(function(d){ if(d.n) rowCnt[d.n] = (rowCnt[d.n]||0)+1; });
+    topPersons.forEach(function(p){
+      var c = rowCnt[p] || 0;
+      if(c > 0){
+        var intensity = c / maxC; // 0..1
+        var bg = 'rgba(249,108,59,' + (0.12 + 0.88 * intensity).toFixed(2) + ')';
+        var fg = intensity > 0.45 ? '#fff' : '#2A2018';
+        html += '<td style="border:1px solid #eee;padding:5px 6px;text-align:center;background:'+bg+';color:'+fg+';font-weight:700">'+c+'</td>';
+      } else {
+        html += '<td style="border:1px solid #eee;padding:5px 6px;text-align:center;background:#fff;color:#eee">·</td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  // 每月 Top3 人员清单
+  html += '<div style="margin-top:14px"><p style="font-size:11px;color:#636e72;margin:0 0 6px 0">📌 每月 Top 人员（按该类出错次数）</p>';
+  months.forEach(function(m){
+    var rc = {};
+    pool.filter(function(d){return d.m===m;}).forEach(function(d){ if(d.n) rc[d.n] = (rc[d.n]||0)+1; });
+    var arr = Object.entries(rc).sort(function(a,b){return b[1]-a[1]}).slice(0,3);
+    if(arr.length){
+      html += '<div style="font-size:11px;line-height:1.7;margin-bottom:2px"><b style="color:#F96C3B">'+escapeHtml(m)+'：</b>'
+            + arr.map(function(e){return escapeHtml(e[0])+' <b style="color:#e17055">'+e[1]+'次</b>'}).join('、') + '</div>';
+    }
+  });
+  html += '</div>';
+
+  body.innerHTML = html;
+}
+
+function initErrorTrendSelect(data) {
+  const errCnt = {};
+  data.forEach(d=>{if(d.e)errCnt[d.e]=(errCnt[d.e]||0)+1});
+  const sorted = Object.entries(errCnt).sort((a,b)=>b[1]-a[1]).map(d=>d[0]);
+  const sel = document.getElementById('errTrendSelect');
+  sel.innerHTML = sorted.map(e=>`<option value="${e}">${e}</option>`).join('');
+  sel.onchange = function(){ applyErrorTrend(); };
+  const errMonths = [...new Set(allData.cs.map(function(d){return d.m}).concat(allData.comp.map(function(d){return d.m})))].sort();
+  const errYears = [...new Set(errMonths.map(function(m){return m.split('/')[0]}))].sort();
+  var ySel = document.getElementById('errTrendYear');
+  ySel.innerHTML = '<option value="">全部</option>';
+  errYears.forEach(function(y){ var o=document.createElement('option'); o.value=y; o.textContent=y; ySel.appendChild(o); });
+  ySel.onchange = function(){ applyErrorTrend(); };
+}
+
+function applyErrorTrend() {
+  // 使用 getBaseData() 跳过全局月份筛选
+  let trendData = getBaseData();
+  if(filterState.type!=='all') trendData = trendData.filter(d=>d.type===filterState.type);
+  if(filterState.group) trendData = trendData.filter(d => resolveGroup(d) === filterState.group);
+  const selected = document.getElementById('errTrendSelect').value;
+  if(!selected) return;
+  const errYear = document.getElementById('errTrendYear').value;
+  if(errYear) trendData = trendData.filter(d=>d.m.startsWith(errYear));
+  // 找到所有月份（用于强制显示零值月）
+  const allM = [...new Set(trendData.map(d=>d.m))].sort();
+  // 按年月聚合，显示各月该差错数量
+  const monthMap = {};
+  // 初始化所有月份为0（确保小额打款等少量差错月也显示）
+  allM.forEach(m => { monthMap[m] = { count:0, agents:{} }; });
+  trendData.forEach(d => {
+    if(d.e === selected) {
+      if(!monthMap[d.m]) monthMap[d.m] = { count:0, agents:{} };
+      monthMap[d.m].count++;
+      if(!monthMap[d.m].agents[d.n]) monthMap[d.m].agents[d.n] = {count:0,sumAdj:0};
+      monthMap[d.m].agents[d.n].count++;
+      monthMap[d.m].agents[d.n].sumAdj += d.s;
+    }
+  });
+  const months = Object.keys(monthMap).sort();
+  const mv = months.map(m => monthMap[m].count);
+  const chartId = 'chartErrorTrend';
+  if(months.length === 0) {
+    makeChart(chartId,'bar',{
+      labels:['该筛选条件下无数据'],datasets:[{label:selected+' 发生次数',data:[0],backgroundColor:'#dfe6e9'}]
+    },{plugins:{legend:{display:false},datalabels:{display:false}},scales:{y:{beginAtZero:true,title:{display:true,text:'次数'}}}});
+    return;
+  }
+  makeChart(chartId,'line',{
+    labels:months,
+    datasets:[{label:selected+' 发生次数',data:mv,
+      borderColor:'#e17055',backgroundColor:'rgba(225,112,85,0.1)',fill:true,tension:.3,pointRadius:5}]
+  },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',formatter:v=>v}},
+    scales:{y:{beginAtZero:true,title:{display:true,text:'次数'}}},
+    onClick:function(e,el){
+      if(el.length>0){
+        var idx = el[0].index;
+        var m = months[idx];
+        if(m){
+          // 显示该月该差错类型的具体记录明细（含差错类型）
+          var records = trendData.filter(function(d){ return d.m === m && d.e === selected; });
+          records.sort(function(a,b){ return b.s - a.s; });
+          var html = '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="text-align:left">日期</th><th style="text-align:left">姓名</th><th style="text-align:left">组别</th><th style="text-align:left">差错类型</th><th style="text-align:right">扣分</th></tr></thead><tbody>' +
+            records.map(function(d){
+              var g = resolveGroup(d);
+              return '<tr><td>'+(d.d||'')+'</td><td>'+escapeHtml(d.n)+'</td><td>'+escapeHtml(g||'-')+'</td><td>'+escapeHtml(d.e||'')+'</td><td style="text-align:right;color:#d63031">'+(d.s<0?d.s.toFixed(1):'-'+d.s.toFixed(1))+'</td></tr>';
+            }).join('') +
+            '</tbody></table><div style="margin-top:8px;font-size:11px;color:#636e72">共 '+records.length+' 条</div>';
+          document.getElementById('modalTitle').textContent = m+' · '+selected+' · 差错明细';
+          document.getElementById('modalBody').innerHTML = html;
+          document.getElementById('errorModal').classList.add('show');
+        }
+      }
+    }});
+}
+
+// ========== UNSAT ==========
+function renderUnsat() {
+  // Apply month filter to unsat data
+  let data = allData.unsat;
+  if(filterState.months.length > 0 && !filterState.months.includes('all')) {
+    data = data.filter(d => d.m && filterState.months.includes(d.m));
+  }
+  if(data.length === 0) {
+    document.getElementById('unsatKpiRow').innerHTML = '<div class="kpi-card"><div class="value" style="color:#b2bec3">无数据</div></div>';
+    document.querySelectorAll('#tab-unsat .chart-card').forEach(el => {
+      const canvas = el.querySelector('canvas');
+      if(canvas) makeChart(canvas.id,'bar',{
+        labels:['无数据'],datasets:[{data:[0],backgroundColor:'#dfe6e9'}]
+      },{plugins:{legend:{display:false},datalabels:{display:false}}});
+    });
+    return;
+  }
+
+  document.getElementById('unsatKpiRow').innerHTML =
+    `<div class="kpi-card"><div class="label">不满意总量</div><div class="value">${data.length}</div></div>
+     <div class="kpi-card"><div class="label">平均专项分</div><div class="value">${(data.reduce((a,b)=>a+b.ss,0)/data.length).toFixed(1)}</div></div>
+     <div class="kpi-card"><div class="label">涉及客服</div><div class="value">${new Set(data.map(d=>d.n)).size}</div><div class="sub">人</div></div>
+     <div class="kpi-card"><div class="label">涉及商品/活动</div><div class="value">${new Set(data.map(d=>d.product_name).filter(Boolean)).size}</div><div class="sub">个</div></div>`;
+
+  // 近半年不满意数量走势（用全量数据，点击月份弹窗TOP6小分类）
+  const unsatAll = allData.unsat || [];
+  const unsatMonths = [...new Set(unsatAll.map(d=>d.m))].sort().slice(-6);
+  const unsatTrend = unsatMonths.map(m => unsatAll.filter(d=>d.m===m).length);
+  makeChart('chartUnsatTrend','bar',{
+    labels:unsatMonths, datasets:[
+      { type:'bar', order:1, label:'不满意数量', data:unsatTrend,
+        backgroundColor:'rgba(108,92,231,0.5)', borderColor:'#6c5ce7', borderWidth:1, borderRadius:3 },
+      { type:'line', order:2, label:'不满意数量', data:unsatTrend,
+        borderColor:'#6c5ce7', backgroundColor:'transparent', pointRadius:5, fill:false, tension:.3,
+        datalabels:{ display:false } }
+    ]
+  },{plugins:{datalabels:{...DL_OPTS,anchor:'end',align:'top',font:{size:9},formatter:v=>v}},
+    scales:{y:{beginAtZero:true,title:{display:true,text:'次数'}}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx=el[0].index;
+        const m=unsatMonths[idx];
+        const recs=unsatAll.filter(function(d){return d.m===m && d.rs});
+        const rsCnt={}; recs.forEach(function(d){rsCnt[d.rs]=(rsCnt[d.rs]||0)+1;});
+        const top6=Object.entries(rsCnt).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+        var html='<table><thead><tr><th>不满意小分类</th><th>数量</th></tr></thead><tbody>';
+        top6.forEach(function(e){html+='<tr><td>'+e[0]+'</td><td style=\"text-align:center;font-weight:bold;color:#d63031\">'+e[1]+'</td></tr>';});
+        html+='</tbody></table>';
+        document.getElementById('modalTitle').textContent=m+' · 不满意小分类TOP6';
+        document.getElementById('modalBody').innerHTML=html;
+        document.getElementById('errorModal').classList.add('show');
+      }
+    }});
+
+  // 不满意中分类环比对比（当前筛选月 vs 数据中的上一个月）
+  const rlCur = {}; const rlPrev = {};
+  const fullUnsatForMom = allData.unsat || [];
+  const allUnsatMonths = [...new Set(fullUnsatForMom.map(d=>d.m).filter(Boolean))].sort();
+  const selectedUnsatMonths = [...new Set(data.map(d=>d.m).filter(Boolean))].sort();
+  const curM = selectedUnsatMonths[selectedUnsatMonths.length-1] || allUnsatMonths[allUnsatMonths.length-1] || '';
+  const curIdx = allUnsatMonths.indexOf(curM);
+  const prevM = curIdx > 0 ? allUnsatMonths[curIdx-1] : '';
+  fullUnsatForMom.forEach(d=>{
+    if(d.rl){
+      if(d.m === curM) rlCur[d.rl] = (rlCur[d.rl]||0) + 1;
+      if(d.m === prevM) rlPrev[d.rl] = (rlPrev[d.rl]||0) + 1;
+    }
+  });
+  // 合并出现过的所有中分类，按本月数量取TOP10
+  const allMidCats = new Set([...Object.keys(rlCur), ...Object.keys(rlPrev)]);
+  const sortedMid = [...allMidCats].sort((a,b) => (rlCur[b]||0) - (rlCur[a]||0)).slice(0, 10);
+  makeChart('chartUnsatMidCat','bar',{
+    labels:sortedMid,
+    datasets:[
+      {label:curM, data:sortedMid.map(c=>rlCur[c]||0), backgroundColor:'#6c5ce7', borderRadius:3},
+      {label:prevM, data:sortedMid.map(c=>rlPrev[c]||0), backgroundColor:'#74b9ff', borderRadius:3}
+    ]
+  },{indexAxis:'y',plugins:{legend:{position:'bottom',labels:{font:{size:9}}},
+    datalabels:{display:function(ctx){return ctx.dataset.data[ctx.dataIndex]>0},color:'#fff',font:{weight:'bold',size:9},anchor:'center',formatter:v=>v}}});
+
+  // 不满意评价原因分布TOP6（来自不满意专项数据的「不满意中分类」字段）
+  const rlFull = {};
+  data.forEach(d => { if(d.rl) rlFull[d.rl] = (rlFull[d.rl]||0) + 1; });
+  const topRL = Object.entries(rlFull).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const rll = topRL.map(d=>d[0]);
+  const rlv = topRL.map(d=>d[1]);
+  const rlTotal = Object.values(rlFull).reduce((a,b)=>a+b, 0);
+  makeChart('chartUnsatLink','doughnut',{
+    labels:rll, datasets:[{data:rlv, backgroundColor:['#e17055','#0984e3','#00b894','#fdcb6e','#6c5ce7','#d63031']}]
+  },{radius:'70%',cutout:'60%',
+    plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:8,padding:12}},
+    datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'center',align:'center',
+    formatter:(v,t)=>((v/rlTotal*100).toFixed(1))+'%'}},
+    layout:{padding:{right:20,top:10,bottom:10,left:10}}});
+
+  // 各客服不满意数量（仅统计ss<100）- 柱状图按总量TOP10
+  const ac={};data.forEach(d=>{if(d.ss < 100) ac[d.n]=(ac[d.n]||0)+1});
+  const ar=Object.entries(ac).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const maxUA = Math.max(1, ...ar.map(d=>d[1]));
+  makeChart('chartUnsatAgent','bar',{
+    labels:ar.map(d=>d[0]), datasets:[{label:'不满意数量',data:ar.map(d=>d[1]),backgroundColor:'#e17055',borderRadius:3}]
+  },{plugins:{legend:{display:false},datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'center',align:'center',formatter:v=>v}},
+    scales:{y:{beginAtZero:true,max:Math.ceil(maxUA*1.2),title:{display:true,text:'次数'}}},
+    onClick:function(e,el){
+      if(el.length>0){
+        const idx=el[0].index;
+        const agentName=ar[idx][0];
+        const records=data.filter(function(d){return d.n===agentName && d.ss<100});
+        showModal(agentName+' · 不满意明细（'+records.length+'次）', records.map(function(d){return [d.rb||'不满意',{sumAdj:-(100-d.ss)/10,count:1,bonuses:0,deductions:-(100-d.ss)/10}];}));
+      }
+    }});
+
+  const sc={};data.forEach(d=>{if(d.product_name)sc[d.product_name]=(sc[d.product_name]||0)+1});
+  const sr=Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const unsatShopMax = Math.max(...sr.map(d=>d[1]), 1);
+  makeChart('chartUnsatShop','bar',{
+    labels:sr.map(d=>d[0]),datasets:[{label:'不满意数量',data:sr.map(d=>d[1]),backgroundColor:'#00b894',borderRadius:3}]
+  },{indexAxis:'y',plugins:{legend:{display:false},datalabels:{color:'#fff',font:{weight:'bold',size:10},anchor:'end',align:'start',offset:-4,formatter:v=>v}},
+    scales:{x:{beginAtZero:true,max:unsatShopMax+1},y:{ticks:{font:{size:9},autoSkip:false},afterFit:function(scale){scale.width=140;}}},
+    layout:{padding:{right:10}}});
+}
+
+// ========== HELPERS ==========
+function aggregateByMonth(data) {
+  // 每月质检得分 = 91 + 当月加减分 / 所有员工数
+  const monthData = {};
+  data.forEach(d => {
+    if(!monthData[d.m]) monthData[d.m] = { count: 0, sumAdj: 0, nonzeroCount: 0, people: new Set() };
+    monthData[d.m].count++;
+    monthData[d.m].sumAdj += Number(d.s) || 0;
+    if(d.s !== 0) monthData[d.m].nonzeroCount++;
+    monthData[d.m].people.add(d.n);
+  });
+  return Object.entries(monthData)
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([m,v]) => ({
+      m,
+      count:v.count,
+      nonzeroCount:v.nonzeroCount,
+      peopleCount:v.people.size,
+      avgAdjustment:v.people.size ? v.sumAdj / v.people.size : 0,
+      avgScore:BASE + (v.people.size ? v.sumAdj / v.people.size : 0)
+    }));
+}
+
+function makeChart(id, type, config, extra) {
+  const ctx = document.getElementById(id);
+  if(!ctx) return;
+  // 双重销毁：先查 Chart.js 内部注册表（防止孤儿实例），再查自定义 charts 对象
+  const existing = Chart.getChart && Chart.getChart(ctx);
+  if(existing) { try { existing.destroy(); } catch(e) {} }
+  if(charts[id]) { try { charts[id].destroy(); } catch(e) {} delete charts[id]; }
+  // 清除之前的错误提示（如有）
+  const oldHint = ctx.parentNode ? ctx.parentNode.querySelector('.chart-error-hint') : null;
+  if(oldHint) oldHint.remove();
+  const dflt = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:9}}}}
+  };
+  try { charts[id] = new Chart(ctx, { type, data:config, options: {...dflt,...(extra||{})} }); }
+  catch(e) {
+    console.warn(id, e.message);
+    // 在画布父容器内显示可见错误提示，便于排查空白原因
+    const parent = ctx.parentNode;
+    if(parent) {
+      let hint = parent.querySelector('.chart-error-hint');
+      if(!hint) {
+        hint = document.createElement('div');
+        hint.className = 'chart-error-hint';
+        hint.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,0.95);color:#d63031;padding:10px 14px;border-radius:6px;font-size:12px;line-height:1.5;max-width:90%;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10;text-align:center;';
+        parent.style.position = 'relative';
+        parent.appendChild(hint);
+      }
+      hint.textContent = '图表加载失败: ' + id + ' - ' + e.message;
+    }
+  }
+}
+
+function showRemark(name, month, rmk) {
+  document.getElementById('modalTitle').textContent = `${name} · ${month} · 备注`;
+  document.getElementById('modalBody').innerHTML = `<div style="padding:12px;background:#f8f9fa;border-radius:6px;font-size:13px;line-height:1.7;color:#2d3436;word-break:break-all;white-space:pre-wrap">${rmk}</div>`;
+  document.getElementById('errorModal').classList.add('show');
+}
+
+
+// 页面加载后自动加载默认数据
+loadJSON();
+</script>
+</div>
+</body>
+</html>
