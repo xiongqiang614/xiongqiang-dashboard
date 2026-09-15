@@ -508,7 +508,21 @@ function getAgentLatestGroup(name) {
 
 async function loadJSON() {
   try {
-    fetch('dashboard_data.json?_t='+Date.now()).then(r=>r.json()).then(data=>{ allData = data; normalizeNames(); document.getElementById('uploadStatus').textContent='已加载数据: '+(allData.cs.length+allData.comp.length)+' 条记录'; const initTab = new URLSearchParams(location.search).get('tab'); init(initTab||'overview'); });
+    const stamp = '?_t='+Date.now();
+    const data = await fetch('dashboard_data.json'+stamp).then(r=>r.json());
+    // ai 数据量大且逐月不变，被拆成独立分片以便上传（单次请求体有限制）；
+    // 见到 aiRef 就把分片取回来拼成一个数组，结果与内联 ai 完全一致。
+    if (data.aiRef) {
+      const chunks = await Promise.all(data.aiRef.map(f => fetch(f+stamp).then(r=>r.json())));
+      data.ai = [].concat.apply([], chunks);
+      delete data.aiRef;
+    }
+    if (!data.ai) data.ai = [];
+    allData = data;
+    normalizeNames();
+    document.getElementById('uploadStatus').textContent='已加载数据: '+(allData.cs.length+allData.comp.length)+' 条记录';
+    const initTab = new URLSearchParams(location.search).get('tab');
+    init(initTab||'overview');
   } catch(e) {
     document.getElementById('uploadStatus').textContent = '加载失败: '+e.message;
   }
