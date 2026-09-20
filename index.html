@@ -112,6 +112,35 @@ tr:hover{background:#f8f9fa}
 .progress-cancel{margin-top:16px;padding:5px 16px;border:1px solid #ddd;border-radius:6px;background:#f8f9fa;color:#636e72;font-size:12px;cursor:pointer}
 .progress-cancel:hover{background:#eee}
 
+/* ===== 用户情绪变差分析板块 ===== */
+.emo-meta{font-size:11px;color:#b2bec3;margin-left:auto}
+.emo-note{font-size:10px;color:#b2bec3;font-weight:400}
+.emo-concl{background:#FFF8F5;border:1px solid #f5d9b8;border-left:4px solid #d63031;border-radius:8px;padding:14px 18px;margin-bottom:12px}
+.emo-concl-h{font-size:13px;font-weight:700;color:#2d3436;margin-bottom:8px}
+.emo-concl ol{margin:0;padding-left:20px}
+.emo-concl li{font-size:12px;line-height:1.85;color:#4a4a4a;margin-bottom:2px}
+.emo-concl li b{color:#2d3436}
+.emo-hl{color:#d63031!important;font-size:13px}
+.emo-up{color:#d63031;font-weight:600}
+.emo-down{color:#00b894;font-weight:600}
+.emo-group-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px}
+.emo-group-card{background:#fff;border-radius:8px;padding:12px 14px;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+.emo-group-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;font-size:12px;color:#636e72}
+.emo-group-h b{font-size:17px;color:#2d3436}
+.emo-group-li{display:flex;justify-content:space-between;font-size:11px;color:#4a4a4a;padding:2px 0;border-bottom:1px dashed #f0f0f0}
+.emo-group-li:last-child{border-bottom:none}
+.emo-group-li i{font-style:normal;color:#636e72;font-weight:600}
+.emo-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.emo-tag{font-size:10px;padding:1px 7px;border-radius:9px}
+.emo-tag-red{background:#ffeaea;color:#d63031}
+.emo-tag-green{background:#e8f8f2;color:#00a37a}
+.emo-bars{margin-top:4px}
+.emo-bar-li{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px}
+.emo-bar-name{width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#4a4a4a}
+.emo-bar-track{flex:1;height:12px;background:#f0f0f0;border-radius:6px;overflow:hidden}
+.emo-bar-track i{display:block;height:100%;background:linear-gradient(90deg,#e17055,#d63031);border-radius:6px}
+.emo-bar-val{width:46px;flex:none;text-align:right;color:#636e72;font-weight:600}
+
 @media(max-width:768px){.chart-grid{grid-template-columns:1fr}.filter-bar{flex-direction:column;align-items:stretch}}
 
 /* ===== 差错情况分析面板样式 ===== */
@@ -236,6 +265,7 @@ tr:hover{background:#f8f9fa}
   <span class="tab" data-tab="people">人员表现</span>
   <span class="tab" data-tab="errors">差错分析</span>
   <span class="tab" data-tab="unsat">不满意专项</span>
+  <span class="tab" data-tab="emotion">用户情绪变差分析</span>
   <span class="tab" data-tab="perf">绩效板块（预留）</span>
 </div>
 
@@ -384,6 +414,11 @@ tr:hover{background:#f8f9fa}
     <div class="chart-card"><h3>各客服不满意数量 <span style="font-size:10px;color:#b2bec3">(专项分<100)</span></h3><div class="chart-wrap"><canvas id="chartUnsatAgent"></canvas></div></div>
     <div class="chart-card"><h3>不满意商品TOP10 <span style="font-size:10px;color:#b2bec3">(来自“不满意专项-商品/活动名称”)</span></h3><div class="chart-wrap"><canvas id="chartUnsatShop"></canvas></div></div>
   </div>
+</div>
+
+<div class="tab-content" id="tab-emotion">
+  <div class="sub-filter-bar" id="emoScopeBar"></div>
+  <div id="emoBody"></div>
 </div>
 
 <div class="tab-content" id="tab-perf">
@@ -1056,6 +1091,7 @@ function switchTab(tabName) {
   else if(tabName==='people') renderPeople();
   else if(tabName==='errors') renderErrors();
   else if(tabName==='unsat') renderUnsat();
+  else if(tabName==='emotion') renderEmotion();
   
 }
 
@@ -2924,6 +2960,744 @@ function showRemark(name, month, rmk) {
   document.getElementById('errorModal').classList.add('show');
 }
 
+
+/* ============================================================================
+   用户情绪变差分析板块
+   ----------------------------------------------------------------------------
+   数据分三层：
+     ① emotion_index.json        结论层（月份清单 + 全部聚合结论，约 0.2MB）
+     ② emotion/em_YYYY-MM.json   明细层（按月，约 3~7MB，点具体月份才加载）
+     ③ index.agg.all.samples     全周期典型样板 300 条
+   新增月份不需要改这里：月份清单来自 ①，页签按数据自动生成。
+   ============================================================================ */
+let emoIndex = null;
+let emoMonthCache = {};
+let emoScope = 'all';
+let emoDetailRows = null;
+let emoDetailScope = null;
+let emoDetailShow = 100;
+let emoDetailFilter = { theme:'', cat:'', solv:'', kw:'' };
+
+const EMO_G  = { supply:'供给源头', policy:'规则与权限', service:'服务过程', emotion:'用户预期' };
+const EMO_GC = { supply:'#d63031', policy:'#e17055', service:'#0984e3', emotion:'#95a5a6' };
+
+function emoPct(n, d) { return d > 0 ? n * 100 / d : 0; }
+function emoF1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+function emoF0(v) { return Math.round(v).toLocaleString(); }
+function emoMap(arr) { const o = {}; (arr || []).forEach(kv => { o[kv[0]] = kv[1]; }); return o; }
+function emoThemeName(i) {
+  const t = emoIndex && emoIndex.themes[i];
+  return t ? t.n : '(未命中)';
+}
+function emoThemeGroup(i) {
+  const t = emoIndex && emoIndex.themes[i];
+  return t ? t.g : 'service';
+}
+function emoHeat(v, max, color) {
+  const a = max > 0 ? Math.pow(v / max, 0.6) : 0;
+  if (v <= 0) return '';
+  return ' style="background:' + color + ';opacity:' + (0.10 + a * 0.75).toFixed(2) + ';font-weight:600"';
+}
+function emoTable(head, rows) {
+  return '<div class="table-wrap"><table><thead><tr>' +
+    head.map(h => '<th>' + h + '</th>').join('') +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+function emoLoadErr(host, msg) {
+  host.innerHTML = '<div class="placeholder-card"><h3>无法加载情绪变差数据</h3>' +
+    '<p>' + escapeHtml(msg) + '</p>' +
+    '<p style="margin-top:10px">请先运行 build_emotion.py 生成 emotion_index.json 与 emotion/ 分片。</p></div>';
+}
+
+async function loadEmotionIndex() {
+  if (emoIndex) return emoIndex;
+  const r = await fetch('emotion_index.json?_t=' + Date.now());
+  if (!r.ok) throw new Error('emotion_index.json HTTP ' + r.status);
+  emoIndex = await r.json();
+  return emoIndex;
+}
+
+async function fetchEmoMonth(m) {
+  if (emoMonthCache[m]) return emoMonthCache[m];
+  const info = (emoIndex.months || []).find(x => x.m === m);
+  if (!info) throw new Error('没有该月份的分片: ' + m);
+  const stamp = '?_t=' + Date.now();
+  const parts = await Promise.all(info.files.map(f => fetch(f + stamp).then(r => r.json())));
+  const rows = [];
+  parts.forEach(p => (p.r || []).forEach(r => rows.push(r)));
+  emoMonthCache[m] = rows;
+  return rows;
+}
+
+/* ---------------------------------------------------------- 入口 */
+async function renderEmotion() {
+  const host = document.getElementById('emoBody');
+  host.innerHTML = '<div class="placeholder-card"><h3>正在加载情绪变差数据…</h3>' +
+    '<p>结论层约 0.2MB，明细按月份懒加载</p></div>';
+  try {
+    await loadEmotionIndex();
+  } catch (e) {
+    emoLoadErr(host, e.message);
+    return;
+  }
+  buildEmoScopeBar();
+  await renderEmoScope();
+}
+
+function buildEmoScopeBar() {
+  const bar = document.getElementById('emoScopeBar');
+  if (!bar || !emoIndex) return;
+  const months = (emoIndex.months || []).map(x => x.m).sort().reverse();
+  let h = '<label>口径:</label><div class="chip-group">';
+  h += '<span class="chip' + (emoScope === 'all' ? ' active' : '') + '" data-emo="all">全周期</span>';
+  months.forEach(m => {
+    h += '<span class="chip' + (emoScope === m ? ' active' : '') + '" data-emo="' + m + '">' + m + '</span>';
+  });
+  h += '<span class="chip' + (emoScope === 'cross' ? ' active' : '') + '" data-emo="cross">跨月对比</span>';
+  h += '</div><span class="emo-meta">共 ' + emoF0(emoIndex.total) + ' 条 ｜ ' +
+    emoIndex.scope + ' ｜ 截止 ' + emoIndex.gen + '</span>';
+  bar.innerHTML = h;
+  bar.querySelectorAll('[data-emo]').forEach(el => {
+    el.onclick = function () {
+      emoScope = this.dataset.emo;
+      renderEmoScope();
+    };
+  });
+}
+
+async function renderEmoScope() {
+  Object.values(charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+  charts = {};
+  const host = document.getElementById('emoBody');
+  if (emoScope === 'cross') { renderEmoCross(host); return; }
+
+  const key = emoScope === 'all' ? 'all' : emoScope;
+  const agg = emoIndex.agg[key];
+  if (!agg) { host.innerHTML = '<div class="placeholder-card"><h3>该口径暂无数据</h3></div>'; return; }
+  const isAll = emoScope === 'all';
+  // 口径变了就丢弃上一次的明细与筛选（不能依赖调用方先重置）
+  if (emoDetailScope !== emoScope) {
+    emoDetailRows = null; emoDetailShow = 100;
+    emoDetailFilter = { theme:'', cat:'', solv:'', kw:'' };
+    emoDetailScope = emoScope;
+  }
+
+  host.innerHTML =
+    emoHeadlineHTML(agg, isAll ? '全周期' : emoScope) +
+    emoKpiHTML(agg) +
+    '<div class="chart-grid">' +
+      '<div class="chart-card"><h3>原因主题分布 <span class="emo-note">（多标签，一条可命中多个）</span></h3>' +
+        '<div class="chart-wrap" style="height:300px"><canvas id="emoChartTheme"></canvas></div></div>' +
+      '<div class="chart-card"><h3>主因归属（四类）<span class="emo-note">该找谁</span></h3>' +
+        '<div class="chart-wrap" style="height:300px"><canvas id="emoChartGroup"></canvas></div></div>' +
+    '</div>' +
+    emoGroupDetailHTML(agg) +
+    '<div class="chart-grid">' +
+      '<div class="chart-card wide"><h3>主因主题 × 客服问题分类（一级）<span class="emo-note">交叉</span></h3>' +
+        emoCrossTableHTML(agg) + '</div></div>' +
+    emoProdSectionHTML(agg) +
+    emoAgentSectionHTML(agg) +
+    '<div class="chart-grid">' +
+      '<div class="chart-card"><h3>用户初始情绪 <span class="emo-note">进来时是什么状态</span></h3>' +
+        '<div class="chart-wrap" style="height:280px"><canvas id="emoChartInit"></canvas></div></div>' +
+      '<div class="chart-card"><h3>问题解决程度</h3>' +
+        '<div class="chart-wrap" style="height:280px"><canvas id="emoChartSolv"></canvas></div></div>' +
+    '</div>' +
+    '<div class="chart-grid">' +
+      '<div class="chart-card"><h3>客服态度 × 是否解决<span class="emo-note">归因矩阵</span></h3>' +
+        emoMatrixHTML(agg) + '</div>' +
+      '<div class="chart-card"><h3>消息数量分档<span class="emo-note">越长越容易崩</span></h3>' +
+        '<div class="chart-wrap" style="height:240px"><canvas id="emoChartMsg"></canvas></div></div>' +
+    '</div>' +
+    '<div class="chart-grid">' +
+      '<div class="chart-card"><h3>接入渠道 TOP12</h3>' +
+        '<div class="chart-wrap" style="height:320px"><canvas id="emoChartCh"></canvas></div></div>' +
+      '<div class="chart-card"><h3>AI问题分类（一级）</h3>' +
+        '<div class="chart-wrap" style="height:320px"><canvas id="emoChartAI"></canvas></div></div>' +
+    '</div>' +
+    emoDailyCardHTML(agg) +
+    emoDetailCardHTML(emoScope);
+
+  emoDrawCharts(agg);
+  await emoLoadDetail(emoScope);
+}
+
+/* ---------------------------------------------------------- 结论条 */
+function emoHeadlineHTML(agg, label) {
+  const n = agg.n;
+  const solv = emoMap(agg.solv);
+  const noS = solv['否'] || 0, yesS = solv['是'] || 0, partS = solv['部分解决'] || 0;
+  const att = emoMap(agg.att);
+  const enth = att['热情'] || 0;
+  const attd = emoMap(agg.attd);
+  const argue = attd['是'] || 0;
+  const g = { supply:0, policy:0, service:0, emotion:0 };
+  (agg.theme1 || []).forEach(kv => { const k = emoThemeGroup(kv[0]); if (g[k] !== undefined) g[k] += kv[1]; });
+  const upstream = g.supply + g.policy;
+
+  const top = (agg.theme1 || [])[0];
+  const topTh = top ? emoThemeName(top[0]) : '—';
+  const topThPct = top ? emoF1(emoPct(top[1], n)) : '0';
+  const p1 = (agg.pname || [])[0];
+  const p1Pct = p1 ? emoF1(emoPct(p1[1], agg.pnameN || 1)) : '0';
+  const top10 = (agg.pname || []).slice(0, 10).reduce((s, kv) => s + kv[1], 0);
+  const top10Pct = emoF1(emoPct(top10, agg.pnameN || 1));
+  const mb = emoMap(agg.msgb);
+  const long = mb['31+'] || 0;
+
+  let h = '<div class="emo-concl">';
+  h += '<div class="emo-concl-h">' + label + '：' + emoF0(n) + ' 条变差会话解剖（' +
+       (agg.dateMin || '') + ' ~ ' + (agg.dateMax || '') + '）</div>';
+  h += '<ol>';
+  h += '<li><b>问题没被解决，是最主要的事实。</b>「是否解决 = 否」占 <b class="emo-hl">' +
+       emoF1(emoPct(noS, n)) + '%</b>（' + emoF0(noS) + ' 条），明确「是」的只有 <b>' +
+       emoF1(emoPct(yesS, n)) + '%</b>（' + emoF0(yesS) + ' 条），部分解决 ' +
+       emoF1(emoPct(partS, n)) + '%。</li>';
+  h += '<li><b>责任大头在上游，不在客服。</b>主因落在「供给源头」<b>' + emoF1(emoPct(g.supply, n)) +
+       '%</b> + 「规则与权限」<b>' + emoF1(emoPct(g.policy, n)) + '%</b>，合计 <b class="emo-hl">' +
+       emoF1(emoPct(upstream, n)) + '%</b>；服务过程只占 <b>' + emoF1(emoPct(g.service, n)) +
+       '%</b>，用户自身预期占 ' + emoF1(emoPct(g.emotion, n)) + '%。</li>';
+  h += '<li><b>这不是态度问题。</b>客服态度「热情」占 <b>' + emoF1(emoPct(enth, n)) +
+       '%</b>，明确发生争执的只有 <b>' + emoF0(argue) + ' 条</b>（' + emoF1(emoPct(argue, n)) +
+       '%）。把资源投在态度培训上，打在靶外。</li>';
+  h += '<li><b>风险高度集中在少数商品。</b>TOP1 商品占全部变差的 <b class="emo-hl">' + p1Pct +
+       '%</b>（' + (p1 ? escapeHtml(p1[0]) : '—') + '），TOP10 累计 <b>' + top10Pct + '%</b>。这是可定点处理的清单，不是概率事件。</li>';
+  h += '<li><b>超长会话是熔断信号。</b>消息 31 条以上的会话 <b>' + emoF0(long) + ' 条</b>，占 <b>' +
+       emoF1(emoPct(long, n)) + '%</b>。建议 >25 条自动升级组长介入。</li>';
+  h += '<li>第一大主因主题：<b>' + escapeHtml(topTh) + '</b>（' + topThPct + '%）。</li>';
+  h += '</ol></div>';
+  return h;
+}
+
+/* ---------------------------------------------------------- KPI */
+function emoKpiHTML(agg) {
+  const n = agg.n;
+  const solv = emoMap(agg.solv);
+  const att = emoMap(agg.att);
+  const g = { supply:0, policy:0, service:0, emotion:0 };
+  (agg.theme1 || []).forEach(kv => { const k = emoThemeGroup(kv[0]); if (g[k] !== undefined) g[k] += kv[1]; });
+  const cards = [
+    ['变差会话', emoF0(n), agg.dateMin + ' ~ ' + agg.dateMax],
+    ['未解决占比', emoF1(emoPct((solv['否'] || 0) + (solv['部分解决'] || 0) * 0.5, n)) + '%', '「否」' + emoF0(solv['否'] || 0) + ' + 部分解决×0.5'],
+    ['上游责任占比', emoF1(emoPct(g.supply + g.policy, n)) + '%', '供给 ' + emoF1(emoPct(g.supply, n)) + '% · 规则 ' + emoF1(emoPct(g.policy, n)) + '%'],
+    ['态度「热情」占比', emoF1(emoPct(att['热情'] || 0, n)) + '%', '态度一般 ' + emoF0(att['一般'] || 0)],
+    ['平均消息数', agg.msgAvg + ' 条', '中位 ' + agg.msgMed + ' 条 · 最长 ' + agg.msgMax],
+    ['有商品名记录', emoF0(agg.pnameN), '唯一商品 ' + emoF0(agg.pnameUniq) + ' 个'],
+    ['重复进线用户', emoF0(agg.userRepeat), '同一用户 ≥2 次变差'],
+  ];
+  return '<div class="kpi-row">' + cards.map(c =>
+    '<div class="kpi-card"><div class="label">' + c[0] + '</div>' +
+    '<div class="value">' + c[1] + '</div><div class="sub">' + c[2] + '</div></div>').join('') + '</div>';
+}
+
+/* ---------------------------------------------------------- 四类主因明细 */
+function emoGroupDetailHTML(agg) {
+  const n = agg.n;
+  const g = { supply:0, policy:0, service:0, emotion:0 };
+  const per = { supply:{}, policy:{}, service:{}, emotion:{} };
+  (agg.theme1 || []).forEach(kv => {
+    const k = emoThemeGroup(kv[0]);
+    if (g[k] === undefined) return;
+    g[k] += kv[1];
+    per[k][emoThemeName(kv[0])] = (per[k][emoThemeName(kv[0])] || 0) + kv[1];
+  });
+  let h = '<div class="emo-group-row">';
+  ['supply','policy','service','emotion'].forEach(k => {
+    const items = Object.entries(per[k]).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    h += '<div class="emo-group-card" style="border-top:3px solid ' + EMO_GC[k] + '">' +
+      '<div class="emo-group-h"><span>' + EMO_G[k] + '</span><b>' + emoF1(emoPct(g[k], n)) + '%</b></div>' +
+      (items.length ? items.map(it =>
+        '<div class="emo-group-li"><span>' + escapeHtml(it[0]) + '</span><i>' + emoF0(it[1]) + '</i></div>'
+      ).join('') : '<div class="emo-group-li"><span>—</span><i>0</i></div>') +
+      '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+/* ---------------------------------------------------------- 交叉表 */
+function emoCrossTableHTML(agg) {
+  const cats = (agg.cat1 || []).filter(kv => kv[0]).map(kv => kv[0]);
+  const ct = agg.catXth || {};
+  if (!cats.length) return '<div class="emo-note">无分类数据</div>';
+  let max = 0;
+  cats.forEach(c => (ct[c] || []).forEach(kv => { if (kv[1] > max) max = kv[1]; }));
+  const themeRows = [];
+  const seen = {};
+  cats.forEach(c => (ct[c] || []).forEach(kv => {
+    if (!seen[kv[0]]) { seen[kv[0]] = true; themeRows.push([kv[0], emoThemeName(kv[0])]); }
+  }));
+  themeRows.sort((a, b) => {
+    const ta = (ct[cats[0]] || []).filter(kv => kv[0] === a[0]).length;
+    return a[0] - b[0];
+  });
+  let h = '<table><thead><tr><th style="text-align:left">主因主题</th>' +
+    cats.map(c => '<th>' + escapeHtml(c) + '</th>').join('') +
+    '<th>合计</th></tr></thead><tbody>';
+  themeRows.forEach(tr => {
+    let tot = 0;
+    const cells = cats.map(c => {
+      const v = emoMap(ct[c] || {})[tr[0]] || 0;
+      tot += v;
+      return '<td' + emoHeat(v, max, EMO_GC[emoThemeGroup(tr[0])]) + '>' + (v || '') + '</td>';
+    });
+    if (!tot) return;
+    h += '<tr><td style="text-align:left;white-space:nowrap"><span class="emo-dot" style="background:' +
+      EMO_GC[emoThemeGroup(tr[0])] + '"></span>' + escapeHtml(tr[1]) + '</td>' +
+      cells.join('') + '<td style="font-weight:700">' + tot + '</td></tr>';
+  });
+  h += '</tbody></table><div class="emo-note" style="margin-top:6px">行 = 主因主题，列 = 客服问题分类（一级）。颜色越深表示组合越集中，可直接定位「哪个品类出的问题是什么」。</div>';
+  return h;
+}
+
+/* ---------------------------------------------------------- 商品维度 */
+function emoProdSectionHTML(agg) {
+  const n = agg.pnameN || 1;
+  const items = (agg.pname || []).slice(0, 30);
+  let cum = 0;
+  const rows = items.map((kv, i) => {
+    cum += kv[1];
+    return '<tr><td style="text-align:center">' + (i + 1) + '</td>' +
+      '<td>' + escapeHtml(kv[0]) + '</td>' +
+      '<td style="text-align:center;font-weight:700">' + kv[1] + '</td>' +
+      '<td style="text-align:center">' + emoF1(emoPct(kv[1], n)) + '%</td>' +
+      '<td style="text-align:center;color:#636e72">' + emoF1(emoPct(cum, n)) + '%</td></tr>';
+  }).join('');
+  const cats = (agg.pcat || []).filter(kv => kv[0] !== '(空)').slice(0, 12);
+  const catMax = cats.length ? cats[0][1] : 1;
+  const catHTML = cats.map(kv =>
+    '<div class="emo-bar-li"><span class="emo-bar-name">' + escapeHtml(kv[0]) + '</span>' +
+    '<span class="emo-bar-track"><i style="width:' + (kv[1] / catMax * 100).toFixed(1) + '%"></i></span>' +
+    '<span class="emo-bar-val">' + kv[1] + '</span></div>').join('');
+
+  return '<div class="chart-grid">' +
+    '<div class="chart-card"><h3>商品名 TOP20 <span class="emo-note">按变差条数</span></h3>' +
+      '<div class="chart-wrap" style="height:420px"><canvas id="emoChartProd"></canvas></div></div>' +
+    '<div class="chart-card"><h3>商品分类分布 <span class="emo-note">该字段空值较多，仅供参考</span></h3>' +
+      '<div class="emo-bars">' + (catHTML || '<div class="emo-note">无数据</div>') + '</div>' +
+      '<h3 style="margin-top:14px">TOP30 明细（含累计占比）</h3>' +
+      '<div style="max-height:300px;overflow:auto">' +
+      emoTable(['#','商品名','变差条数','占比','累计'], rows) + '</div>' +
+    '</div></div>';
+}
+
+/* ---------------------------------------------------------- 客服榜 */
+function emoAgentSectionHTML(agg) {
+  const n = agg.n;
+  const list = agg.agent || [];
+  const avg = list.length ? n / list.length : 0;
+  const rows = list.map(a => {
+    const share = emoPct(a[2], n);
+    const flag = a[2] > avg * 1.25 ? '<span class="emo-tag emo-tag-red">偏高</span>'
+      : (a[2] < avg * 0.75 ? '<span class="emo-tag emo-tag-green">偏低</span>' : '');
+    return '<tr><td>' + escapeHtml(a[0]) + '</td><td>' + escapeHtml(a[1] || '—') + '</td>' +
+      '<td style="text-align:center;font-weight:700">' + a[2] + '</td>' +
+      '<td style="text-align:center">' + emoF1(share) + '%</td>' +
+      '<td style="text-align:center">' + flag + '</td></tr>';
+  }).join('');
+  return '<div class="chart-grid">' +
+    '<div class="chart-card"><h3>变差条数 × 客服 <span class="emo-note">红黑榜（按条数，未做变差率归一）</span></h3>' +
+      '<div class="chart-wrap" style="height:360px"><canvas id="emoChartAgent"></canvas></div></div>' +
+    '<div class="chart-card"><h3>客服明细 <span class="emo-note">条数均摊 ' + emoF1(avg) + '</span></h3>' +
+      '<div style="max-height:360px;overflow:auto">' +
+      emoTable(['客服','组别','变差条数','占全部','判断'], rows) + '</div>' +
+      '<div class="emo-note" style="margin-top:6px">⚠️ 条数受接待量影响，仅作分布参考；要判断个人能力须除以接待总量。</div>' +
+    '</div></div>';
+}
+
+/* ---------------------------------------------------------- 归因矩阵 */
+function emoMatrixHTML(agg) {
+  const atts = (agg.att || []).map(kv => kv[0]);
+  const solvs = ['否','部分解决','是','(空)'];
+  const m = {};
+  (agg.attXsolv || []).forEach(kv => { m[kv[0] + '|' + kv[1]] = kv[2]; });
+  let max = 0;
+  Object.values(m).forEach(v => { if (v > max) max = v; });
+  let h = '<table><thead><tr><th>态度 \\ 解决</th>' +
+    solvs.map(s => '<th>' + s + '</th>').join('') + '</tr></thead><tbody>';
+  atts.forEach(a => {
+    h += '<tr><td style="white-space:nowrap">' + escapeHtml(a) + '</td>' +
+      solvs.map(s => {
+        const v = m[a + '|' + s] || 0;
+        return '<td' + emoHeat(v, max, '#d63031') + '>' + (v || '') + '</td>';
+      }).join('') + '</tr>';
+  });
+  h += '</tbody></table>';
+  const solvXth = agg.solvXth || {};
+  const noTh = (solvXth['否'] || []).slice(0, 5);
+  const yesTh = (solvXth['是'] || []).slice(0, 5);
+  h += '<div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+    '<div><div class="emo-note">「未解决」里的主因 TOP5</div>' +
+    noTh.map(kv => '<div class="emo-group-li"><span>' + escapeHtml(emoThemeName(kv[0])) +
+      '</span><i>' + kv[1] + '</i></div>').join('') + '</div>' +
+    '<div><div class="emo-note">「已解决」里的主因 TOP5</div>' +
+    (yesTh.length ? yesTh.map(kv => '<div class="emo-group-li"><span>' +
+      escapeHtml(emoThemeName(kv[0])) + '</span><i>' + kv[1] + '</i></div>').join('')
+      : '<div class="emo-note">无</div>') + '</div></div>';
+  return h;
+}
+
+/* ---------------------------------------------------------- 按日趋势 */
+function emoDailyCardHTML(agg) {
+  return '<div class="chart-grid"><div class="chart-card wide">' +
+    '<h3>每日变差会话数 <span class="emo-note">' + (agg.dateMin || '') + ' ~ ' + (agg.dateMax || '') + ' ｜ 空白日 = 当天无数据</span></h3>' +
+    '<div class="chart-wrap" style="height:260px"><canvas id="emoChartDaily"></canvas></div></div></div>';
+}
+
+/* ---------------------------------------------------------- 明细表 */
+function emoDetailCardHTML(scope) {
+  const note = scope === 'all'
+    ? '全周期只展示最典型的 300 条（按「未解决 + 超长会话」排序）。要看完整明细，请切换到具体月份。'
+    : '本月份全量明细（含总结全文），支持筛选。';
+  return '<div class="chart-card wide" style="margin-bottom:12px">' +
+    '<h3>案例明细 <span class="emo-note">' + note + '</span></h3>' +
+    '<div class="sub-filter-bar" id="emoDetailBar">' +
+      '<label>主因:</label><select id="emoFTheme"></select>' +
+      '<label>分类:</label><select id="emoFCat"></select>' +
+      '<label>解决:</label><select id="emoFSolv"></select>' +
+      '<label>关键词:</label><input type="text" id="emoFKw" placeholder="总结里包含…" style="min-width:140px">' +
+      '<span id="emoFCount" style="font-size:11px;color:#636e72;margin-left:auto"></span>' +
+      '<span class="chip" id="emoFReset">重置</span>' +
+    '</div>' +
+    '<div id="emoDetailTable" style="max-height:560px;overflow:auto"></div>' +
+    '<div id="emoDetailMore" style="text-align:center;margin-top:8px"></div>' +
+  '</div>';
+}
+
+async function emoLoadDetail(scope) {
+  const box = document.getElementById('emoDetailTable');
+  if (!box) return;
+  if (emoDetailRows) { emoRenderDetail(); return; }
+  if (scope === 'all') {
+    emoDetailRows = (emoIndex.agg.all.samples || []).slice();
+    emoFillDetailFilters();
+    emoRenderDetail();
+    return;
+  }
+  box.innerHTML = '<div class="emo-note" style="padding:20px;text-align:center">正在加载 ' + scope + ' 明细…</div>';
+  try {
+    const raw = await fetchEmoMonth(scope);
+    const c = emoIndex.cols;
+    const I = {};
+    c.forEach((k, i) => { I[k] = i; });
+    emoDetailRows = raw.map(r => ({
+      sid: r[I.sid], n: r[I.n], d: r[I.d], ch: r[I.ch], cat: r[I.cat],
+      init: r[I.init], att: r[I.att], solv: r[I.solv], msg: r[I.msg],
+      pname: r[I.pname], th1: r[I.th1], th: r[I.th], sum: r[I.sum],
+    }));
+  } catch (e) {
+    box.innerHTML = '<div class="emo-note" style="padding:20px;text-align:center;color:#d63031">明细加载失败：' + escapeHtml(e.message) + '</div>';
+    return;
+  }
+  emoFillDetailFilters();
+  emoRenderDetail();
+}
+
+function emoFillDetailFilters() {
+  const rows = emoDetailRows || [];
+  const th = {}, cat = {}, solv = {};
+  rows.forEach(r => {
+    th[r.th1] = (th[r.th1] || 0) + 1;
+    const c1 = (r.cat || '').split('/')[0];
+    if (c1) cat[c1] = (cat[c1] || 0) + 1;
+    if (r.solv) solv[r.solv] = (solv[r.solv] || 0) + 1;
+  });
+  const fill = (id, entries, allLabel) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<option value="">' + allLabel + '</option>' +
+      entries.map(e => '<option value="' + escapeHtml(String(e[0])) + '">' +
+        escapeHtml(e[0] === '-1' ? '(未命中)' : (id === 'emoFTheme' ? emoThemeName(+e[0]) : e[0])) +
+        ' (' + e[1] + ')</option>').join('');
+  };
+  fill('emoFTheme', Object.entries(th).sort((a, b) => b[1] - a[1]).map(e => [e[0], e[1]]), '全部主题');
+  fill('emoFCat', Object.entries(cat).sort((a, b) => b[1] - a[1]).map(e => [e[0], e[1]]), '全部分类');
+  fill('emoFSolv', Object.entries(solv).sort((a, b) => b[1] - a[1]).map(e => [e[0], e[1]]), '全部');
+  const bind = (id, field, isInput) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const ev = isInput ? 'input' : 'change';
+    el.oninput = el.onchange = function () {
+      emoDetailFilter[field] = this.value;
+      emoDetailShow = 100;
+      emoRenderDetail();
+    };
+  };
+  bind('emoFTheme', 'theme'); bind('emoFCat', 'cat');
+  bind('emoFSolv', 'solv'); bind('emoFKw', 'kw', true);
+  const rs = document.getElementById('emoFReset');
+  if (rs) rs.onclick = function () {
+    emoDetailFilter = { theme:'', cat:'', solv:'', kw:'' };
+    emoDetailShow = 100;
+    ['emoFTheme','emoFCat','emoFSolv'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
+    const kw = document.getElementById('emoFKw'); if (kw) kw.value = '';
+    emoRenderDetail();
+  };
+}
+
+function emoFilteredDetail() {
+  const f = emoDetailFilter, kw = (f.kw || '').trim();
+  return (emoDetailRows || []).filter(r => {
+    if (f.theme !== '' && String(r.th1) !== f.theme) return false;
+    if (f.cat && (r.cat || '').split('/')[0] !== f.cat) return false;
+    if (f.solv && r.solv !== f.solv) return false;
+    if (kw && !(r.sum || '').includes(kw)) return false;
+    return true;
+  });
+}
+
+function emoRenderDetail() {
+  const box = document.getElementById('emoDetailTable');
+  const more = document.getElementById('emoDetailMore');
+  if (!box) return;
+  const list = emoFilteredDetail();
+  const cnt = document.getElementById('emoFCount');
+  if (cnt) cnt.textContent = '命中 ' + list.length + ' / ' + (emoDetailRows || []).length + ' 条';
+  const show = list.slice(0, emoDetailShow);
+  const rows = show.map(r =>
+    '<tr><td style="white-space:nowrap">' + escapeHtml((r.d || '').slice(0, 10)) + '</td>' +
+    '<td style="white-space:nowrap">' + escapeHtml(r.n || '') + '</td>' +
+    '<td style="white-space:nowrap">' + escapeHtml(r.ch || '') + '</td>' +
+    '<td style="white-space:nowrap">' + escapeHtml((r.cat || '').split('/').slice(0, 2).join('/')) + '</td>' +
+    '<td style="white-space:nowrap">' + escapeHtml(r.init || '') + '</td>' +
+    '<td style="text-align:center;white-space:nowrap">' + escapeHtml(r.att || '') + '</td>' +
+    '<td style="text-align:center;white-space:nowrap">' + escapeHtml(r.solv || '') + '</td>' +
+    '<td style="text-align:center">' + (r.msg || 0) + '</td>' +
+    '<td style="white-space:nowrap"><span class="emo-dot" style="background:' +
+      EMO_GC[emoThemeGroup(r.th1)] + '"></span>' + escapeHtml(emoThemeName(r.th1)) + '</td>' +
+    '<td style="min-width:280px">' + escapeHtml(r.sum || '') + '</td></tr>').join('');
+  box.innerHTML = emoTable(['日期','客服','渠道','分类','初始情绪','态度','解决','消息数','主因','总结'], rows);
+  if (more) {
+    more.innerHTML = list.length > emoDetailShow
+      ? '<span class="chip" id="emoMoreBtn">加载更多（还有 ' + (list.length - emoDetailShow) + ' 条）</span>'
+      : (list.length ? '<span class="emo-note">已显示全部 ' + list.length + ' 条</span>' : '<span class="emo-note">没有符合条件的记录</span>');
+    const b = document.getElementById('emoMoreBtn');
+    if (b) b.onclick = function () { emoDetailShow += 200; emoRenderDetail(); };
+  }
+}
+
+/* ---------------------------------------------------------- 图表 */
+function emoDrawCharts(agg) {
+  const n = agg.n;
+  const themes = (agg.theme || []).map(kv => [emoThemeName(kv[0]), kv[1], emoThemeGroup(kv[0])]);
+  makeChart('emoChartTheme', 'bar', {
+    labels: themes.map(t => t[0]),
+    datasets: [{
+      label: '条数', data: themes.map(t => t[1]),
+      backgroundColor: themes.map(t => EMO_GC[t[2]]), borderRadius: 3,
+    }]
+  }, {
+    indexAxis: 'y',
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#2d3436', font: { size: 10, weight: 'bold' }, formatter: v => v } },
+    scales: { x: { beginAtZero: true }, y: { ticks: { font: { size: 10 } } } }
+  });
+
+  const g = { supply:0, policy:0, service:0, emotion:0 };
+  (agg.theme1 || []).forEach(kv => { const k = emoThemeGroup(kv[0]); if (g[k] !== undefined) g[k] += kv[1]; });
+  const gk = ['supply','policy','service','emotion'].filter(k => g[k] > 0);
+
+  makeChart('emoChartGroup', 'doughnut', {
+    labels: gk.map(k => EMO_G[k]),
+    datasets: [{ data: gk.map(k => g[k]), backgroundColor: gk.map(k => EMO_GC[k]), borderWidth: 2, borderColor: '#fff' }]
+  }, {
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+      datalabels: { color: '#2d3436', font: { size: 10, weight: 'bold' }, formatter: (v, ctx) => emoF1(emoPct(v, n)) + '%' }
+    }
+  });
+
+  const prod = (agg.pname || []).slice(0, 20);
+  makeChart('emoChartProd', 'bar', {
+    labels: prod.map(kv => kv[0].length > 26 ? kv[0].slice(0, 26) + '…' : kv[0]),
+    datasets: [{ data: prod.map(kv => kv[1]), backgroundColor: '#e17055', borderRadius: 3 }]
+  }, {
+    indexAxis: 'y',
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#2d3436', font: { size: 9 }, formatter: v => v } },
+    scales: { x: { beginAtZero: true }, y: { ticks: { font: { size: 9 } } } }
+  });
+
+  const ag = (agg.agent || []).slice(0, 26);
+  makeChart('emoChartAgent', 'bar', {
+    labels: ag.map(a => a[0]),
+    datasets: [{
+      data: ag.map(a => a[2]),
+      backgroundColor: ag.map(a => a[2] > n / ((agg.agent || []).length || 1) * 1.25 ? '#d63031' : '#74b9ff'),
+      borderRadius: 3,
+    }]
+  }, {
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top', color: '#2d3436', font: { size: 9 }, formatter: v => v } },
+    scales: { y: { beginAtZero: true }, x: { ticks: { font: { size: 9 }, maxRotation: 60, minRotation: 45 } } }
+  });
+
+  const init = (agg.init || []);
+  makeChart('emoChartInit', 'doughnut', {
+    labels: init.map(kv => kv[0]),
+    datasets: [{
+      data: init.map(kv => kv[1]),
+      backgroundColor: init.map((kv, i) => kv[0].indexOf('愤怒') >= 0 ? '#d63031'
+        : kv[0].indexOf('不满') >= 0 ? '#e17055'
+        : kv[0].indexOf('焦虑') >= 0 ? '#fdcb6e'
+        : kv[0].indexOf('困惑') >= 0 ? '#74b9ff'
+        : kv[0].indexOf('不耐烦') >= 0 ? '#ffeaa7'
+        : kv[0].indexOf('中性') >= 0 ? '#b2bec3' : '#dfe6e9'),
+    }]
+  }, {
+    plugins: {
+      legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } },
+      datalabels: { display: ctx => ctx.dataset.data[ctx.dataIndex] / n > 0.04, color: '#2d3436', font: { size: 10, weight: 'bold' }, formatter: v => emoF0(v) }
+    }
+  });
+
+  const solv = agg.solv || [];
+  makeChart('emoChartSolv', 'bar', {
+    labels: solv.map(kv => kv[0]),
+    datasets: [{
+      data: solv.map(kv => kv[1]),
+      backgroundColor: solv.map(kv => kv[0] === '否' ? '#d63031' : kv[0] === '部分解决' ? '#fdcb6e' : kv[0] === '是' ? '#00b894' : '#b2bec3'),
+      borderRadius: 3,
+    }]
+  }, {
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top', color: '#2d3436', font: { size: 10, weight: 'bold' }, formatter: v => emoF0(v) + '  ' + emoF1(emoPct(v, n)) + '%' } },
+    scales: { y: { beginAtZero: true } }
+  });
+
+  const mb = (agg.msgb || []);
+  makeChart('emoChartMsg', 'bar', {
+    labels: mb.map(kv => kv[0]),
+    datasets: [{ data: mb.map(kv => kv[1]), backgroundColor: ['#74b9ff','#81ecec','#ffeaa7','#e17055','#d63031'], borderRadius: 3 }]
+  }, {
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top', color: '#2d3436', font: { size: 10, weight: 'bold' }, formatter: v => emoF0(v) } },
+    scales: { y: { beginAtZero: true }, x: { title: { display: true, text: '消息数量分档', font: { size: 10 } } } }
+  });
+
+  const ch = (agg.ch || []).slice(0, 12);
+  makeChart('emoChartCh', 'bar', {
+    labels: ch.map(kv => kv[0]),
+    datasets: [{ data: ch.map(kv => kv[1]), backgroundColor: '#0984e3', borderRadius: 3 }]
+  }, {
+    indexAxis: 'y',
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#2d3436', font: { size: 9 }, formatter: v => v } },
+    scales: { x: { beginAtZero: true }, y: { ticks: { font: { size: 9 } } } }
+  });
+
+  const ai = (agg.ai1 || []).slice(0, 12);
+  makeChart('emoChartAI', 'bar', {
+    labels: ai.map(kv => kv[0]),
+    datasets: [{ data: ai.map(kv => kv[1]), backgroundColor: '#6c5ce7', borderRadius: 3 }]
+  }, {
+    indexAxis: 'y',
+    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#2d3436', font: { size: 9 }, formatter: v => v } },
+    scales: { x: { beginAtZero: true }, y: { ticks: { font: { size: 9 } } } }
+  });
+
+  const dl = agg.daily || [];
+  makeChart('emoChartDaily', 'line', {
+    labels: dl.map(kv => kv[0]),
+    datasets: [{
+      label: '变差会话数', data: dl.map(kv => kv[1]),
+      borderColor: '#d63031', backgroundColor: 'rgba(214,48,49,.12)',
+      fill: true, tension: .25, pointRadius: 2, borderWidth: 2,
+    }]
+  }, {
+    plugins: { legend: { display: false }, datalabels: { display: false } },
+    scales: { y: { beginAtZero: true }, x: { ticks: { font: { size: 9 }, maxRotation: 60, minRotation: 45 } } }
+  });
+}
+
+/* ---------------------------------------------------------- 跨月对比 */
+function renderEmoCross(host) {
+  const c = emoIndex.cross;
+  if (!c) { host.innerHTML = '<div class="placeholder-card"><h3>至少需要两个月的数据才能做跨月对比</h3></div>'; return; }
+  const a = c.a, b = c.b;
+  const themes = (c.theme || []).slice().sort((x, y) => x[3] - y[3]);
+  const worse = themes.filter(t => t[3] >= 2).slice(-6).reverse();
+  const better = themes.filter(t => t[3] <= -2).slice(0, 6);
+
+  const kpi = c.kpi || {};
+  const kpiCards = [
+    ['变差条数', a + ' ' + emoF0(kpi.n_a) + ' → ' + b + ' ' + emoF0(kpi.n_b), '注：两月导出范围不同，绝对量不可比'],
+    ['未解决占比', emoF1(kpi.unsolved_a) + '% → ' + emoF1(kpi.unsolved_b) + '%',
+      (kpi.unsolved_b - kpi.unsolved_a >= 0 ? '↑ +' : '↓ ') + emoF1(kpi.unsolved_b - kpi.unsolved_a) + 'pp'],
+    ['解决率', emoF1(kpi.solv_rate_a) + '% → ' + emoF1(kpi.solv_rate_b) + '%',
+      (kpi.solv_rate_b - kpi.solv_rate_a >= 0 ? '↑ +' : '↓ ') + emoF1(kpi.solv_rate_b - kpi.solv_rate_a) + 'pp'],
+    ['平均消息数', kpi.msg_avg_a + ' → ' + kpi.msg_avg_b,
+      '中位 ' + kpi.msg_med_a + ' → ' + kpi.msg_med_b],
+  ];
+
+  let h = '<div class="emo-concl">';
+  h += '<div class="emo-concl-h">跨月对比：' + a + ' vs ' + b + '（一律用结构占比，不用绝对条数）</div>';
+  h += '<ol>';
+  if (worse.length) {
+    h += '<li><b>在变坏的：</b>' + worse.map(t => '<b>' + escapeHtml(emoThemeName(t[0])) + '</b> ' +
+      emoF1(t[1]) + '%→' + emoF1(t[2]) + '%（<span class="emo-up">+' + emoF1(t[3]) + 'pp</span>）').join('；') + '。</li>';
+  }
+  if (better.length) {
+    h += '<li><b>在改善的：</b>' + better.map(t => '<b>' + escapeHtml(emoThemeName(t[0])) + '</b> ' +
+      emoF1(t[1]) + '%→' + emoF1(t[2]) + '%（<span class="emo-down">' + emoF1(t[3]) + 'pp</span>）').join('；') + '。</li>';
+  }
+  const prodUp = (c.prod || []).filter(p => p[5] > 0.5).slice(0, 3);
+  if (prodUp.length) {
+    h += '<li><b>商品集中度在上升：</b>' + prodUp.map(p => escapeHtml(p[0].slice(0, 20)) +
+      ' ' + p[2] + '%→' + p[4] + '%').join('；') + '。这些是新增的风险点，需要单独排查。</li>';
+  }
+  h += '</ol></div>';
+
+  const rows = themes.slice().reverse().map(t => {
+    const cls = t[3] >= 2 ? 'emo-up' : (t[3] <= -2 ? 'emo-down' : '');
+    return '<tr><td><span class="emo-dot" style="background:' + EMO_GC[emoThemeGroup(t[0])] + '"></span>' +
+      escapeHtml(emoThemeName(t[0])) + '</td>' +
+      '<td style="text-align:center">' + emoF1(t[1]) + '%</td>' +
+      '<td style="text-align:center">' + emoF1(t[2]) + '%</td>' +
+      '<td style="text-align:center" class="' + cls + '">' + (t[3] > 0 ? '+' : '') + emoF1(t[3]) + 'pp</td></tr>';
+  }).join('');
+
+  const catRows = (c.cat || []).slice().reverse().filter(x => Math.abs(x[3]) >= 1).map(x => {
+    const cls = x[3] >= 1 ? 'emo-up' : (x[3] <= -1 ? 'emo-down' : '');
+    return '<tr><td>' + escapeHtml(x[0]) + '</td><td style="text-align:center">' + emoF1(x[1]) + '%</td>' +
+      '<td style="text-align:center">' + emoF1(x[2]) + '%</td>' +
+      '<td style="text-align:center" class="' + cls + '">' + (x[3] > 0 ? '+' : '') + emoF1(x[3]) + 'pp</td></tr>';
+  }).join('');
+
+  const prodRows = (c.prod || []).slice(0, 30).map(p =>
+    '<tr><td>' + escapeHtml(p[0]) + '</td>' +
+    '<td style="text-align:center">' + p[1] + '</td><td style="text-align:center">' + emoF1(p[2]) + '%</td>' +
+    '<td style="text-align:center">' + p[3] + '</td><td style="text-align:center">' + emoF1(p[4]) + '%</td>' +
+    '<td style="text-align:center" class="' + (p[5] >= 0.3 ? 'emo-up' : (p[5] <= -0.3 ? 'emo-down' : '')) + '">' +
+    (p[5] > 0 ? '+' : '') + emoF1(p[5]) + 'pp</td></tr>').join('');
+
+  host.innerHTML = h +
+    '<div class="kpi-row">' + kpiCards.map(x =>
+      '<div class="kpi-card"><div class="label">' + x[0] + '</div><div class="value" style="font-size:15px">' +
+      x[1] + '</div><div class="sub">' + x[2] + '</div></div>').join('') + '</div>' +
+    '<div class="chart-grid">' +
+      '<div class="chart-card wide"><h3>原因主题占比变化（pp）<span class="emo-note">正数=变差占比上升</span></h3>' +
+        '<div class="chart-wrap" style="height:400px"><canvas id="emoChartDelta"></canvas></div></div>' +
+    '</div>' +
+    '<div class="chart-grid">' +
+      '<div class="chart-card"><h3>原因主题变化明细</h3>' + emoTable(['主题', a, b, '变化'], rows) + '</div>' +
+      '<div class="chart-card"><h3>问题分类占比变化（≥1pp）</h3>' +
+        (catRows ? emoTable(['分类', a, b, '变化'], catRows) : '<div class="emo-note">无明显变化</div>') + '</div>' +
+    '</div>' +
+    '<div class="chart-grid"><div class="chart-card wide"><h3>商品占比变化 TOP30 <span class="emo-note">按变化幅度排序</span></h3>' +
+      emoTable(['商品名', a + '条数', a + '占比', b + '条数', b + '占比', '变化'], prodRows) + '</div></div>';
+
+  const labels = themes.map(t => emoThemeName(t[0]));
+  makeChart('emoChartDelta', 'bar', {
+    labels: labels,
+    datasets: [{
+      data: themes.map(t => t[3]),
+      backgroundColor: themes.map(t => t[3] >= 0 ? '#d63031' : '#00b894'),
+      borderRadius: 3,
+    }]
+  }, {
+    indexAxis: 'y',
+    plugins: {
+      legend: { display: false },
+      datalabels: { anchor: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start', align: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start', color: '#2d3436', font: { size: 9, weight: 'bold' }, formatter: v => (v > 0 ? '+' : '') + v + 'pp' }
+    },
+    scales: { x: { grid: { color: ctx => ctx.tick.value === 0 ? '#b2bec3' : '#f0f0f0' } }, y: { ticks: { font: { size: 10 } } } }
+  });
+}
 
 // 页面加载后自动加载默认数据
 loadJSON();
